@@ -1,0 +1,4 @@
+extends recursion.parent.gber
+
+block main
+    block inner

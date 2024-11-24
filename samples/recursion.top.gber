@@ -1,0 +1,4 @@
+extends recursion.extends.gber
+
+block inner
+    | content

@@ -1,4 +1,4 @@
-extends multilevel.inheritance.a.gber
+extends multilevel.inheritance.a.giom
 
 block overwriteme
     p This is B

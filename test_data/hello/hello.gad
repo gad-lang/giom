@@ -1,0 +1,5 @@
+const main = func($slots={}) {
+	giomTextWrite("hello to Giom!")
+}
+write(rawstr("\n"))
+return {main: main}

@@ -1,11 +1,16 @@
-package gber
+package giom
 
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/gad-lang/gad"
+	"github.com/gad-lang/gad/parser"
+	"github.com/gad-lang/gad/parser/source"
 )
 
 func Test_Doctype(t *testing.T) {
@@ -13,28 +18,28 @@ func Test_Doctype(t *testing.T) {
 }
 
 func Test_Export(t *testing.T) {
-	genExpect(t, `
-@mixin Alert()
-	div`, `${const $$mixins = {}}${$$mixins.Alert = func() do}
+	compileExpect(t, `
+@comp Alert()
+	div`, `${const $comps = {}}${$comps.Alert = func() do}
 <div></div>${end}
 ${if __is_module__ {
 	return {
-		Alert: $$mixins.Alert,
+		Alert: $comps.Alert,
 	}
 }}`)
 
 	return
-	genExpect(t, `@export X`, `${if __is_module__ {
+	compileExpect(t, `@export X`, `${if __is_module__ {
 	return {
 		X: X,
 	}
 }}`)
-	genExpect(t, `@export X = 2`, `${if __is_module__ {
+	compileExpect(t, `@export X = 2`, `${if __is_module__ {
 	return {
 		X: 2,
 	}
 }}`)
-	genExpect(t, `~ x := 100
+	compileExpect(t, `~ x := 100
 @export Y = x`, `${- x := 100;}
 ${if __is_module__ {
 	return {
@@ -44,21 +49,15 @@ ${if __is_module__ {
 }
 
 func Test_Each(t *testing.T) {
-	genExpect(t, `@for $a, $b, $c in values
+	compileExpect(t, `@for $a, $b, $c in values
 								${=$a}`,
 		`${for $a, $b, $c in values do}${=$a}${end}`)
-	genExpect(t, `
+	compileExpect(t, `
 @for $a, $b, $c in values
   ${=$a}
 @else
   | no values
 `, `${for $a, $b, $c in values do}${=$a}${else}no values${end}`)
-}
-
-func Test_Calls(t *testing.T) {
-	res, _ := generate(`@block a
-								+super`)
-	fmt.Println(res)
 }
 
 func Test_Nesting(t *testing.T) {
@@ -69,17 +68,17 @@ func Test_Nesting(t *testing.T) {
 		`<html><head><title></title></head><body></body></html>`, nil)
 }
 
-func Test_Mixin(t *testing.T) {
+func Test_Comp(t *testing.T) {
 	runExpect(t, `
-		@mixin a(a)
+		@comp a(a)
 			p ${a}
 
 		+a(1)`, `<p>1</p>`, nil)
 }
 
-func Test_MixinYied(t *testing.T) {
+func Test_CompYied(t *testing.T) {
 	runExpect(t, `
-		@mixin Alert($body=nil)
+		@comp Alert($body=nil)
 			@if $body
 				alert
 					~ $body()
@@ -92,9 +91,9 @@ func Test_MixinYied(t *testing.T) {
 			p hello`, `<no-alert></no-alert><hr /><alert><p>hello</p></alert>`, nil)
 }
 
-func Test_MixinYied2(t *testing.T) {
+func Test_CompYied2(t *testing.T) {
 	runExpect(t, `
-		@mixin Alert(*args, $body=nil)
+		@comp Alert(*args, $body=nil)
 			@if args
 				${args[0]}
 			@else if $body
@@ -106,9 +105,9 @@ func Test_MixinYied2(t *testing.T) {
 			p world`, `hello<hr /><p>world</p>`, nil)
 }
 
-func Test_Mixin_Loop(t *testing.T) {
+func Test_Comp_Loop(t *testing.T) {
 	runExpect(t, `
-		@mixin repeat($value, $from, $to)
+		@comp repeat($value, $from, $to)
 			@if $from < $to
 				${$value}
 				+repeat($value, $from+1, $to)
@@ -117,40 +116,40 @@ func Test_Mixin_Loop(t *testing.T) {
 
 	runExpect(t, `
 		~ d := {}
-		@mixin m(v)
+		@comp m(v)
 			${v}
 		+m(1)
-		~ d.m = $$mixins.m
+		~ d.m = $comps.m
 		+d.m(2)`, `12`, nil)
 }
 
-func Test_Mixin_NoArguments(t *testing.T) {
+func Test_Comp_NoArguments(t *testing.T) {
 	runExpect(t, `
-		@mixin a()
+		@comp a()
 			p Testing
 
 		+a()`, `<p>Testing</p>`, nil)
 }
 
-func Test_Mixin_MultiArguments(t *testing.T) {
+func Test_Comp_MultiArguments(t *testing.T) {
 	runExpect(t, `
-		@mixin a($a, $b, $c, $d)
+		@comp a($a, $b, $c, $d)
 			p ${$a} ${$b} ${$c} ${$d}
 
 		+a("a", "b", "c", A)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
 }
 
-func Test_Mixin_NameWithDashes(t *testing.T) {
+func Test_Comp_NameWithDashes(t *testing.T) {
 	runExpect(t, `
-		@mixin i-am-mixin($a, $b, $c, $d)
+		@comp i-am-mixin($a, $b, $c, $d)
 			p ${$a} ${$b} ${$c} ${$d}
 
 		+i-am-mixin("a", "b", "c", A)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
 }
 
-func Test_Mixin_Unknown(t *testing.T) {
+func Test_Comp_Unknown(t *testing.T) {
 	_, err := run(`
-		@mixin foo($a)
+		@comp foo($a)
 			p ${$a}
 
 		+bar(1)`, nil)
@@ -163,7 +162,7 @@ func Test_Mixin_Unknown(t *testing.T) {
 	}
 }
 
-func Test_Mixin_NotEnoughArguments(t *testing.T) {
+func Test_Comp_NotEnoughArguments(t *testing.T) {
 	_, err := run(`
 		mixin foo($a)
 			p ${$a}
@@ -178,7 +177,7 @@ func Test_Mixin_NotEnoughArguments(t *testing.T) {
 	}
 }
 
-func Test_Mixin_TooManyArguments(t *testing.T) {
+func Test_Comp_TooManyArguments(t *testing.T) {
 	_, err := run(`
 		mixin foo($a)
 			p ${$a}
@@ -338,48 +337,6 @@ func Test_StructMethodCall(t *testing.T) {
 	}
 }
 
-func Test_Multiple_File_Inheritance(t *testing.T) {
-	tmpl, err := CompileDir("samples/", DefaultDirOptions, DefaultOptions)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	t1a, ok := tmpl["multilevel.inheritance.a"]
-	if ok != true || t1a == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-
-	t1b, ok := tmpl["multilevel.inheritance.b"]
-	if ok != true || t1b == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-
-	t1c, ok := tmpl["multilevel.inheritance.c"]
-	if ok != true || t1c == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-
-	var res bytes.Buffer
-	t1c.Execute(&res, nil)
-	expect(strings.TrimSpace(res.String()), "<p>This is C</p>", t)
-}
-
-func Test_Recursion_In_Blocks(t *testing.T) {
-	tmpl, err := CompileDir("samples/", DefaultDirOptions, DefaultOptions)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	top, ok := tmpl["recursion.top"]
-	if !ok || top == nil {
-		t.Fatal("template not found.")
-	}
-
-	var res bytes.Buffer
-	top.Execute(&res, nil)
-	expect(strings.TrimSpace(res.String()), "content", t)
-}
-
 func Test_Dollar_In_TagAttributes(t *testing.T) {
 	res, err := run(`input[placeholder="$ per "+kwh]`, map[string]interface{}{
 		"kwh": "kWh",
@@ -406,100 +363,6 @@ func Test_ConditionEvaluation(t *testing.T) {
 		nil)
 }
 
-func Failing_Test_CompileDir(t *testing.T) {
-	tmpl, err := CompileDir("samples/", DefaultDirOptions, DefaultOptions)
-
-	// Test Compilation
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	// Make sure files are added to map correctly
-	val1, ok := tmpl["basic"]
-	if ok != true || val1 == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-	val2, ok := tmpl["inherit"]
-	if ok != true || val2 == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-	val3, ok := tmpl["compiledir_test/basic"]
-	if ok != true || val3 == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-	val4, ok := tmpl["compiledir_test/compiledir_test/basic"]
-	if ok != true || val4 == nil {
-		t.Fatal("CompileDir, template not found.")
-	}
-
-	// Make sure file parsing is the same
-	var doc1, doc2 bytes.Buffer
-	val1.Execute(&doc1, nil)
-	val4.Execute(&doc2, nil)
-	expect(doc1.String(), doc2.String(), t)
-
-	// Check against CompileFile
-	compilefile, err := CompileFile("samples/basic.gber", DefaultOptions)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	var doc3 bytes.Buffer
-	compilefile.Execute(&doc3, nil)
-	expect(doc1.String(), doc3.String(), t)
-	expect(doc2.String(), doc3.String(), t)
-
-}
-
-func Benchmark_Parse(b *testing.B) {
-	code := `
-	!!! 5
-	html
-		head
-			title Test Title
-		body
-			nav#mainNav[data-foo="bar"]
-			div#content
-				div.left
-				div.center
-					block center
-						p Main Content
-							.long ? somevar && someothervar
-				div.right`
-
-	for i := 0; i < b.N; i++ {
-		cmp := New()
-		cmp.Parse(code)
-	}
-}
-
-func Benchmark_Compile(b *testing.B) {
-	b.StopTimer()
-
-	code := `
-	!!! 5
-	html
-		head
-			title Test Title
-		body
-			nav#mainNav[data-foo="bar"]
-			div#content
-				div.left
-				div.center
-					block center
-						p Main Content
-							.long ? somevar && someothervar
-				div.right`
-
-	cmp := New()
-	cmp.Parse(code)
-
-	b.StartTimer()
-
-	for i := 0; i < b.N; i++ {
-		cmp.CompileString()
-	}
-}
-
 func expect(cur, expected string, t *testing.T) {
 	if cur != expected {
 		t.Fatalf("Expected {%s} got {%s}.", expected, cur)
@@ -511,17 +374,28 @@ func runExpect(t *testing.T, tpl, expected string, data any) {
 	tmpl, res, err := runt(tpl, data)
 
 	if err != nil {
-		if tmpl != nil {
-			fmt.Println("-----------")
-			fmt.Println(tmpl.Code)
-			fmt.Println("-----------")
+		switch t := err.(type) {
+		case *gad.RuntimeError:
+			fmt.Fprintf(os.Stderr, "%+v\n", t)
+			if st := t.StackTrace(); len(st) > 0 {
+				t.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(os.Stderr, 20, 20)
+			}
+		case *parser.ErrorList, *gad.CompilerError:
+			fmt.Fprintf(os.Stderr, "%+20.20v\n", t)
+		default:
+			if tmpl != nil {
+				fmt.Println("-----------")
+				fmt.Println(tmpl.Source())
+				fmt.Println("-----------")
+			}
 		}
-		t.Fatal(err.Error())
+
+		t.Fatalf("%+5.5v", err)
 	} else {
 		if res != expected {
 			if tmpl != nil {
 				fmt.Println("-----------")
-				fmt.Println(tmpl.Code)
+				fmt.Println(tmpl.Source())
 				fmt.Println("-----------")
 			}
 			t.Fatalf("Expected {%s} got {%s}.", expected, res)
@@ -579,41 +453,33 @@ func runt(tpl string, data any) (t *Template, res string, err error) {
 		}
 	}
 
-	t, err = Compile(tpl, Options{
-		PrettyPrint:       false,
-		LineNumbers:       false,
-		VirtualFilesystem: nil,
-		BuiltinNames:      nil,
-		GlobalNames:       globalNames,
-		Code:              true,
-		PreCode:           `strings, json := [import("strings"), import("json")]`,
-	})
+	pc := []string{
+		`strings, json := [import("strings"), import("json")]`,
+	}
 
+	if len(globalNames) > 0 {
+		pc = append(pc, "global("+strings.Join(globalNames, ", ")+")")
+	}
+
+	var out bytes.Buffer
+	err = Compile(&out, []byte(tpl), Options{
+		PrettyPrint: false,
+		LineNumbers: false,
+		PreCode:     strings.Join(pc, "\n"),
+	})
 	if err != nil {
 		return
 	}
+
+	if t, err = NewTemplateBuilder(out.Bytes()).Build(); err != nil {
+		return
+	}
+
 	var buf bytes.Buffer
-	if err = t.Execute(&buf, dataDict); err != nil {
+	if _, err = t.Executor().Out(&buf).Execute(); err != nil {
 		return
 	}
 
 	res = strings.TrimSpace(buf.String())
 	return
-}
-
-func generate(tpl string) (string, error) {
-	c := New()
-	if err := c.ParseData([]byte(tpl), "test.gber"); err != nil {
-		return "", err
-	}
-	return c.CompileString()
-}
-
-func genExpect(t *testing.T, tpl, expected string) {
-	res, err := generate(tpl)
-	if err != nil {
-		t.Fatal(err.Error())
-	} else {
-		expect(strings.TrimSpace(res), expected, t)
-	}
 }

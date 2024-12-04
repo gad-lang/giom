@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	gp "github.com/gad-lang/gad/parser"
+	"github.com/gad-lang/gad/parser/source"
 	gt "github.com/gad-lang/gad/token"
 )
 
@@ -41,13 +42,12 @@ const (
 	tokFor
 	tokAssignment
 	tokCode
-	tokImport
 	tokImportModule
-	tokNamedBlock
-	tokInit
-	tokExtends
-	tokMixin
-	tokMixinCall
+	tokFunc
+	tokSlot
+	tokSlotPass
+	tokComp
+	tokCompCall
 	tokSwitch
 	tokCase
 	tokDefault
@@ -72,13 +72,12 @@ var tokNames = [...]string{
 	tokFor:          "FOR",
 	tokAssignment:   "ASSIGNMENT",
 	tokCode:         "CODE",
-	tokImport:       "IMPORT",
 	tokImportModule: "IMPORT_MODULE",
-	tokNamedBlock:   "NAMED_BLOCK",
-	tokInit:         "INIT",
-	tokExtends:      "EXTENDS",
-	tokMixin:        "MIXIN",
-	tokMixinCall:    "MIXIN_CALL",
+	tokFunc:         "FUNC",
+	tokSlot:         "SLOT",
+	tokSlotPass:     "SLOT_PASS",
+	tokComp:         "COMP",
+	tokCompCall:     "COMP_CALL",
 	tokSwitch:       "SWITCH",
 	tokCase:         "CASE",
 	tokDefault:      "DEFAULT",
@@ -99,6 +98,7 @@ type scanner struct {
 	state  int32
 	buffer string
 
+	curPos        int
 	line          int
 	col           int
 	lastTokenLine int
@@ -129,7 +129,12 @@ func newScanner(r io.Reader) *scanner {
 }
 
 func (s *scanner) Pos() SourcePosition {
-	return SourcePosition{s.lastTokenLine + 1, s.lastTokenCol + 1, s.lastTokenSize, ""}
+	return SourcePosition{
+		s.curPos,
+		s.lastTokenLine + 1,
+		s.lastTokenCol + 1,
+		s.lastTokenSize,
+		""}
 }
 
 // Returns next token found in buffer
@@ -169,19 +174,20 @@ do:
 			s.state = scnEOF
 			goto do
 		}
-		if tok := s.scanInit(); tok != nil {
-			return tok
-		}
 
 		if tok := s.scanExport(); tok != nil {
 			return tok
 		}
 
-		if tok := s.scanMixin(); tok != nil {
+		if tok := s.scanFunc(); tok != nil {
 			return tok
 		}
 
-		if tok := s.scanMixinCall(); tok != nil {
+		if tok := s.scanComp(); tok != nil {
+			return tok
+		}
+
+		if tok := s.scanCompCall(); tok != nil {
 			return tok
 		}
 
@@ -209,19 +215,15 @@ do:
 			return tok
 		}
 
-		if tok := s.scanImport(); tok != nil {
-			return tok
-		}
-
 		if tok := s.scanImportModule(); tok != nil {
 			return tok
 		}
 
-		if tok := s.scanExtends(); tok != nil {
+		if tok := s.scanSlot(); tok != nil {
 			return tok
 		}
 
-		if tok := s.scanBlock(); tok != nil {
+		if tok := s.scanSlotPass(); tok != nil {
 			return tok
 		}
 
@@ -532,9 +534,9 @@ var rgxAttribute = regexp.MustCompile(`^\[([\w\-:@\.]+)\s*(?:=\s*(\"([^\"\\]*)\"
 
 func (s *scanner) scanAttribute() *token {
 	if s.buffer[0] == '[' {
-		fs := gp.NewFileSet()
-		sf := fs.AddFile("-", -1, len(s.buffer))
-		p := gp.NewParser(sf, []byte(s.buffer), nil)
+		fs := source.NewFileSet()
+		sf := fs.AddFileData("-", -1, []byte(s.buffer))
+		p := gp.NewParser(sf, nil)
 		lbrack := p.Expect(gt.LBrack)
 		ret := p.ParseKeyValueArrayLitAt(lbrack, gt.RBrack)
 		if p.Errors.Err() == nil {
@@ -571,17 +573,6 @@ func (s *scanner) scanAttribute() *token {
 	return nil
 }
 
-var rgxImport = regexp.MustCompile(`^@import\s+([0-9a-zA-Z_\-\. \/]*)$`)
-
-func (s *scanner) scanImport() *token {
-	if sm := rgxImport.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{Kind: tokImport, Value: sm[1]}
-	}
-
-	return nil
-}
-
 var rgxImportModule = regexp.MustCompile(`^@import\s+("[0-9a-zA-Z_\-\. \/][0-9a-zA-Z_\-\. \/]*")(\s+as\s+([a-zA-Z$_]\w*))?$`)
 
 func (s *scanner) scanImportModule() *token {
@@ -595,39 +586,29 @@ func (s *scanner) scanImportModule() *token {
 	return nil
 }
 
-var rgxExtends = regexp.MustCompile(`^@extends\s+([0-9a-zA-Z_\-\. \/]*)$`)
+var rgxSlot = regexp.MustCompile(`^@slot\s+([a-zA-Z_-]+\w*)(\((.*)\))?$`)
 
-func (s *scanner) scanExtends() *token {
-	if sm := rgxExtends.FindStringSubmatch(s.buffer); len(sm) != 0 {
+func (s *scanner) scanSlot() *token {
+	if sm := rgxSlot.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokExtends, Value: sm[1]}
+		return &token{Kind: tokSlot, Value: sm[1], Data: map[string]string{"Args": sm[3]}}
 	}
 
 	return nil
 }
 
-var rgxBlock = regexp.MustCompile(`^@block\s+(?:(append|prepend)\s+)?([0-9a-zA-Z_\-\. \/]*)$`)
+var rgxSlotPass = regexp.MustCompile(`^@slot\s+#(.+)$`)
 
-func (s *scanner) scanBlock() *token {
-	if sm := rgxBlock.FindStringSubmatch(s.buffer); len(sm) != 0 {
+func (s *scanner) scanSlotPass() *token {
+	if sm := rgxSlotPass.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokNamedBlock, Value: sm[2], Data: map[string]string{"Modifier": sm[1]}}
+		return &token{Kind: tokSlotPass, Value: sm[1], Data: map[string]string{"Header": sm[1]}}
 	}
 
 	return nil
 }
 
 var rgxInit = regexp.MustCompile(`^~~~\s*$`)
-
-func (s *scanner) scanInit() *token {
-	if sm := rgxInit.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		code := s.NextRawCode("~~~")
-		return &token{Kind: tokInit, Values: code}
-	}
-
-	return nil
-}
 
 var rgxTag = regexp.MustCompile(`^(\w[-:/\w]*)`)
 
@@ -662,14 +643,28 @@ func (s *scanner) scanExport() *token {
 	return nil
 }
 
-var rgxMixin = regexp.MustCompile(`^@mixin (=?[a-zA-Z_-]+\w*)(\((.*)\))?$`)
+var rgxFunc = regexp.MustCompile(`^@(export\s+)?func ([a-zA-Z_-]+\w*)(\((.*)\))?$`)
 
-func (s *scanner) scanMixin() *token {
-	if sm := rgxMixin.FindStringSubmatch(s.buffer); len(sm) != 0 {
+func (s *scanner) scanFunc() *token {
+	if sm := rgxFunc.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokMixin, Value: sm[1], Data: map[string]string{"Args": sm[3], "Exported": "false"}}
+		return &token{Kind: tokFunc, Value: sm[2], Data: map[string]string{"Args": sm[4], "Exported": fmt.Sprint(len(sm[1]) > 0)}}
 	}
+	return nil
+}
 
+var rgxComp = regexp.MustCompile(`^@(export\s+)?comp ([a-zA-Z_-]+\w*)(\((.*)\))?$`)
+var rgxMainComp = regexp.MustCompile(`^@main\s*(\((.*)\))?$`)
+
+func (s *scanner) scanComp() *token {
+	if sm := rgxComp.FindStringSubmatch(s.buffer); len(sm) != 0 {
+		s.consume(len(sm[0]))
+		return &token{Kind: tokComp, Value: sm[2], Data: map[string]string{"Args": sm[4], "Exported": fmt.Sprint(len(sm[1]) > 0)}}
+	}
+	if sm := rgxMainComp.FindStringSubmatch(s.buffer); len(sm) != 0 {
+		s.consume(len(sm[0]))
+		return &token{Kind: tokComp, Value: "main", Data: map[string]string{"Args": sm[1], "Exported": "true"}}
+	}
 	return nil
 }
 
@@ -706,12 +701,19 @@ func (s *scanner) scanDefault() *token {
 	return nil
 }
 
-var rgxMixinCall = regexp.MustCompile(`^\+([A-Za-z_-]+[.\w]*)(\((.*)\))?$`)
+var rgxCompCall = regexp.MustCompile(`^\+([A-Za-z_-]+[.\w]*)(\((.*)\)\s*(~?))?$`)
 
-func (s *scanner) scanMixinCall() *token {
-	if sm := rgxMixinCall.FindStringSubmatch(s.buffer); len(sm) != 0 {
+func (s *scanner) scanCompCall() *token {
+	if sm := rgxCompCall.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokMixinCall, Value: sm[1], Data: map[string]string{"Args": sm[3]}}
+		return &token{
+			Kind:  tokCompCall,
+			Value: sm[1],
+			Data: map[string]string{
+				"Args":     sm[3],
+				"WithCode": fmt.Sprint(sm[4] == "~"),
+			},
+		}
 	}
 
 	return nil
@@ -755,6 +757,7 @@ func (s *scanner) ensureBuffer() {
 	}
 
 	buf, err := s.reader.ReadString('\n')
+	s.curPos += len(buf)
 	var lq int
 
 process:
@@ -763,12 +766,7 @@ process:
 	} else if err != nil && len(buf) == 0 {
 		s.state = scnEOF
 	} else {
-		// endline "LF only" or "\n" use Unix, Linux, modern MacOS X, FreeBSD, BeOS, RISC OS
 		if buf[len(buf)-1] == '\n' {
-			buf = buf[:len(buf)-1]
-		}
-		// endline "CR+LF" or "\r\n" use internet protocols, DEC RT-11, Windows, CP/M, MS-DOS, OS/2, Symbian OS
-		if len(buf) > 0 && buf[len(buf)-1] == '\r' {
 			buf = buf[:len(buf)-1]
 		}
 
@@ -778,6 +776,7 @@ process:
 				s.line += 1
 				buf = buf[0:lq] + trimLeftSpace(tmp)
 			}
+			s.curPos += len(buf)
 			goto process
 		}
 

@@ -1,0 +1,22 @@
+strings, json := [import("strings"), import("json")]
+
+const print_lines = func(rows, $slots={}) {
+	const print_line = func(i, line) {
+		giomTextWrite(i, ": ", line, "\n")
+	}
+	const $slot$line$ = func(i, line) {
+		const custom = $slots[(("line[" + i) + "]")]
+		((custom ? ((*args, **kwargs) => custom(print_line, *args; **kwargs)) : print_line))(i, line)
+	}
+	var $slot$line = ($slots.line ?? (_, *args, **kwargs) => $slot$line$(*args; **kwargs))
+	for i, line in rows {
+		$slot$line($slot$line$, i, line)
+	}
+}
+const main = func($slots={}) {
+	.{
+		print_lines(["a", "b", "c", "d"])
+	}
+}
+write(rawstr("\n"))
+return {main: main}

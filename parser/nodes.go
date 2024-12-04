@@ -1,5 +1,6 @@
 package parser
 
+import "C"
 import (
 	"fmt"
 	"strings"
@@ -37,6 +38,7 @@ type Node interface {
 }
 
 type SourcePosition struct {
+	RawPos      int
 	LineNum     int
 	ColNum      int
 	TokenLength int
@@ -91,7 +93,7 @@ func newComment(value string) *Comment {
 
 type Text struct {
 	SourcePosition
-	Stmts []node.Stmt
+	Stmts node.Stmts
 }
 
 func newText(stmts []node.Stmt) *Text {
@@ -142,21 +144,17 @@ func (b *Block) CanInline() bool {
 
 const (
 	NamedBlockDefault = iota
-	NamedBlockAppend
-	NamedBlockPrepend
 )
 
 type NamedBlock struct {
 	Block
-	Name     string
-	Modifier int
+	Name string
 }
 
 func newNamedBlock(name string) *NamedBlock {
 	bb := new(NamedBlock)
 	bb.Name = name
 	bb.Block.Children = make([]Node, 0)
-	bb.Modifier = NamedBlockDefault
 	return bb
 }
 
@@ -273,41 +271,56 @@ func newCode(expressions []string) *Code {
 	return &Code{Expressions: expressions, TrimRigth: trimRigth, TrimLeft: trimLeft}
 }
 
-type Mixin struct {
+type SlotPass struct {
 	SourcePosition
+	FuncType *node.FuncType
+	Name     node.Expr
 	Block    *Block
-	Name     string
-	Args     string
-	Override bool
-	ID       string
-	Exported bool
 }
 
-func newMixin(name, args string, exported bool) *Mixin {
-	mixin := new(Mixin)
-	mixin.Override = name[0] == '='
-	if mixin.Override {
-		name = name[1:]
-	}
-	mixin.ID = strings.ReplaceAll(name, "-", "__")
-	mixin.Name = name
-	mixin.Args = args
-	mixin.Exported = exported
-	return mixin
-}
-
-type MixinCall struct {
+type Slot struct {
 	SourcePosition
 	Name  string
-	Args  string
+	ID    string
+	Scope *node.FuncParams
 	Block *Block
 }
 
-func newMixinCall(name, args string) *MixinCall {
-	mixinCall := new(MixinCall)
-	mixinCall.Name = name
-	mixinCall.Args = args
-	return mixinCall
+type Func struct {
+	SourcePosition
+	Block    *Block
+	Name     string
+	Params   *node.FuncParams
+	Exported bool
+}
+
+type Comp struct {
+	SourcePosition
+	Block    *Block
+	Name     string
+	Params   *node.FuncParams
+	ID       string
+	Exported bool
+	Slots    []*Slot
+	Comps    []*Comp
+}
+
+func newComp(name string, params *node.FuncParams, exported bool) *Comp {
+	c := &Comp{
+		Name:     name,
+		Params:   params,
+		Exported: exported,
+		ID:       strings.ReplaceAll(name, "-", "__"),
+	}
+	return c
+}
+
+type CompCall struct {
+	SourcePosition
+	Name     string
+	Args     node.CallArgs
+	SlotPass []*SlotPass
+	InitCode *Code
 }
 
 type Case struct {
@@ -328,15 +341,9 @@ type Switch struct {
 	Default *Default
 }
 
-type Init struct {
-	SourcePosition
-	Exprs []string
-}
-
 type Root struct {
 	Block
-	Inits  []*Init
-	Mixins []*Mixin
+	Comps []*Comp
 }
 
 type Export struct {

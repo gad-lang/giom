@@ -1,4 +1,4 @@
-extends recursion.extends.gber
+extends recursion.extends.giom
 
 block inner
     | content

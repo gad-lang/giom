@@ -1,14 +1,14 @@
-# gber [![GoDoc](https://godoc.org/github.com/golang/gddo?status.svg)](http://godoc.org/github.com/gad-lang/gber) [![Build Status](https://travis-ci.org/gad-lang/gber.svg?branch=master)](https://travis-ci.org/gad-lang/gber)
+# giom [![GoDoc](https://godoc.org/github.com/gad-lang/giom?status.svg)](http://godoc.org/github.com/gad-lang/giom) [![Build Status](https://travis-ci.org/gad-lang/giom.svg?branch=main)](https://travis-ci.org/gad-lang/giom)
 
 ## Notice
-> While Gber is perfectly fine and stable to use, I've been working on a direct Pug.js port for Go. It is somewhat hacky at the moment but take a look at [Pug.go](https://github.com/eknkc/pug) if you are looking for a [Pug.js](https://github.com/pugjs/pug) compatible Go template engine.
+> While giom is perfectly fine and stable to use, I've been working on a direct Pug.js port for Go. It is somewhat hacky at the moment but take a look at [Pug.go](https://github.com/eknkc/pug) if you are looking for a [Pug.js](https://github.com/pugjs/pug) compatible Go template engine.
 
 ### Usage
 ```go
-import "github.com/gad-lang/gber"
+import "github.com/gad-lang/giom"
 ```
 
-Gber is an elegant templating engine for Go Programming Language
+giom is an elegant templating engine for Go Programming Language
 It is inspired from HAML and Jade
 
 ### Tags
@@ -106,7 +106,7 @@ executed with following JSON data:
   "Name": "Ekin",
   "LastName": "Koc",
   "Repositories": [
-    "gber",
+    "giom",
     "dateformat"
   ],
   "Avatar": "/images/ekin.jpg",
@@ -136,7 +136,7 @@ would print
 
 ### Expressions
 
-Gber can expand basic expressions. For example, it is possible to concatenate strings with + operator:
+giom can expand basic expressions. For example, it is possible to concatenate strings with + operator:
 
     p Welcome ${Name + " " + LastName}
 
@@ -200,7 +200,7 @@ It is possible to iterate over arrays and maps using `each`:
 
 would print
 
-    p gber
+    p giom
     p dateformat
 
 It is also possible to iterate over values and indexes at the same time
@@ -210,9 +210,9 @@ It is also possible to iterate over values and indexes at the same time
             .even ? $i % 2 == 0
             .odd ? $i % 2 == 1
 
-### Mixins
+### Comps
 
-Mixins (reusable template blocks that accept arguments) can be defined:
+Comps (reusable template blocks that accept arguments) can be defined:
 
     mixin surprise
         span Surprise!
@@ -234,13 +234,13 @@ Template data, variables, expressions, etc., can all be passed as arguments:
 
 A template can import other templates using `import`:
 
-    a.gber
+    a.giom
         p this is template a
 
-    b.gber
+    b.giom
         p this is template b
 
-    c.gber
+    c.giom
         div
             import a
             import b
@@ -256,7 +256,7 @@ gets compiled to
 A template can inherit other templates. In order to inherit another template, an `extends` keyword should be used.
 Parent template can define several named blocks and child template can modify the blocks.
 
-    master.gber
+    master.giom
         !!! 5
         html
             head
@@ -269,7 +269,7 @@ Parent template can define several named blocks and child template can modify th
             body
                 block content
 
-    subpage.gber
+    subpage.giom
         extends master
 
         block title
@@ -299,7 +299,7 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ```go
 var DefaultOptions = Options{true, false}
-var DefaultDirOptions = DirOptions{".gber", true}
+var DefaultDirOptions = DirOptions{".giom", true}
 ```
 
 #### func  Compile
@@ -307,7 +307,7 @@ var DefaultDirOptions = DirOptions{".gber", true}
 ```go
 func Compile(input string, options Options) (*template.Template, error)
 ```
-Parses and compiles the supplied gber template string. Returns corresponding Go
+Parses and compiles the supplied giom template string. Returns corresponding Go
 Template (html/templates) instance. Necessary runtime functions will be injected
 and the template will be ready to be executed.
 
@@ -329,16 +329,16 @@ Parses and compiles the contents of a supplied directory name. Returns a mapping
 If there are templates in subdirectories, its key in the map will be it's path relative to `dirname`. For example:
 ```
 templates/
-   |-- index.gber
+   |-- index.giom
    |-- layouts/
-         |-- base.gber
+         |-- base.giom
 ```
 ```go
-templates, err := gber.CompileDir("templates/", gber.DefaultDirOptions, gber.DefaultOptions)
-templates["index"] // index.gber Go Template
-templates["layouts/base"] // base.gber Go Template
+templates, err := giom.CompileDir("templates/", giom.DefaultDirOptions, giom.DefaultOptions)
+templates["index"] // index.giom Go Template
+templates["layouts/base"] // base.giom Go Template
 ```
-By default, the search will be recursive and will match only files ending in ".gber". If recursive is turned off, it will only search the top level of the directory. Specified extension must start with a period.
+By default, the search will be recursive and will match only files ending in ".giom". If recursive is turned off, it will only search the top level of the directory. Specified extension must start with a period.
 
 #### type Compiler
 
@@ -349,13 +349,13 @@ type Compiler struct {
 }
 ```
 
-Compiler is the main interface of Gber Template Engine. In order to use an
-Gber template, it is required to create a Compiler and compile an Gber source
+Compiler is the main interface of giom Template Engine. In order to use an
+giom template, it is required to create a Compiler and compile an giom source
 to native Go template.
 
-    compiler := gber.New()
+    compiler := giom.New()
     // Parse the input file
-    err := compiler.ParseFile("./input.gber")
+    err := compiler.ParseFile("./input.giom")
     if err == nil {
     	// Compile input file to Go template
     	tpl, err := compiler.Compile()
@@ -377,7 +377,7 @@ Create and initialize a new Compiler
 ```go
 func (c *Compiler) Compile() (*template.Template, error)
 ```
-Compile gber and create a Go Template (html/templates) instance. Necessary
+Compile giom and create a Go Template (html/templates) instance. Necessary
 runtime functions will be injected and the template will be ready to be
 executed.
 
@@ -395,7 +395,7 @@ template instance directly.
 ```go
 func (c *Compiler) CompileWriter(out io.Writer) (err error)
 ```
-Compile gber and write the Go Template source into given io.Writer instance You
+Compile giom and write the Go Template source into given io.Writer instance You
 would not be using this unless debugging / checking the output. Please use
 Compile method to obtain a template instance directly.
 
@@ -404,14 +404,14 @@ Compile method to obtain a template instance directly.
 ```go
 func (c *Compiler) Parse(input string) (err error)
 ```
-Parse given raw gber template string.
+Parse given raw giom template string.
 
 #### func (*Compiler) ParseFile
 
 ```go
 func (c *Compiler) ParseFile(filename string) (err error)
 ```
-Parse the gber template file in given path
+Parse the giom template file in given path
 
 #### type Options
 
@@ -423,7 +423,7 @@ type Options struct {
 	// Defaukt: true
 	PrettyPrint bool
 	// Setting if line number emitting is enabled
-	// In this form, Gber emits line number comments in the output template. It is usable in debugging environments.
+	// In this form, giom emits line number comments in the output template. It is usable in debugging environments.
 	// Default: false
 	LineNumbers bool
 }

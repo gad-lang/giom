@@ -1,4 +1,4 @@
-package gber
+package giom
 
 import (
 	"strconv"
@@ -116,11 +116,19 @@ var (
 			return gad.RawStr(b.String()), nil
 		},
 	}
+
+	BuiltinTextWrite = &gad.Function{
+		Name: "giomTextWrite",
+		Value: func(call gad.Call) (_ gad.Object, err error) {
+			return call.VM.Builtins.Call(gad.BuiltinWrite, call)
+		},
+	}
 )
 
 func AppendBuiltins(b *gad.Builtins) *gad.Builtins {
 	b.Set(BuiltinEscape.Name, BuiltinEscape)
 	b.Set(BuiltinAttr.Name, BuiltinAttr)
 	b.Set(BuiltinAttrs.Name, BuiltinAttrs)
+	b.Set(BuiltinTextWrite.Name, BuiltinTextWrite)
 	return b
 }

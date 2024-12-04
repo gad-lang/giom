@@ -1,4 +1,4 @@
-package gber
+package giom
 
 import (
 	"encoding/json"
@@ -8,16 +8,16 @@ import (
 )
 
 var FuncMap = template.FuncMap{
-	"__gber_add":   runtime_add,
-	"__gber_sub":   runtime_sub,
-	"__gber_mul":   runtime_mul,
-	"__gber_quo":   runtime_quo,
-	"__gber_rem":   runtime_rem,
-	"__gber_minus": runtime_minus,
-	"__gber_plus":  runtime_plus,
-	"__gber_eql":   runtime_eql,
-	"__gber_gtr":   runtime_gtr,
-	"__gber_lss":   runtime_lss,
+	"__giom_add":   runtime_add,
+	"__giom_sub":   runtime_sub,
+	"__giom_mul":   runtime_mul,
+	"__giom_quo":   runtime_quo,
+	"__giom_rem":   runtime_rem,
+	"__giom_minus": runtime_minus,
+	"__giom_plus":  runtime_plus,
+	"__giom_eql":   runtime_eql,
+	"__giom_gtr":   runtime_gtr,
+	"__giom_lss":   runtime_lss,
 
 	"json":      runtime_json,
 	"unescaped": runtime_unescaped,
@@ -290,7 +290,7 @@ func runtime_lss(x, y interface{}) bool {
 }
 
 func runtime_globals() (any, error) {
-	return nil, fmt.Errorf("__gber_globals function is not set in your funcmap")
+	return nil, fmt.Errorf("__giom_globals function is not set in your funcmap")
 }
 
 func runtime_gtr(x, y interface{}) bool {

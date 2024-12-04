@@ -1,4 +1,4 @@
-extends inherit.master.gber
+extends inherit.master.giom
 
 block append meta
     meta[name="keywords"][content="These are added by the child template"]

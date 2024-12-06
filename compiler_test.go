@@ -529,29 +529,15 @@ func TestCompiler_CompileTag(t *testing.T) {
 `))
 }
 
-func compile(tpl string) (result string, err error) {
-	result, err = CompileToString(tpl, Options{})
-	return
-}
-
 func compileW(w io.Writer, tpl string) (err error) {
-	return CompileToWriter(w, tpl, Options{})
-}
-
-func compileWF(w io.Writer, tpl string) (err error) {
-	var o strings.Builder
-	o, err = CompileToGad(tpl, true)
-	if err != nil {
-		return
-	}
-	w.Write([]byte(o.String()))
-	return
+	panic("not implemented")
 }
 
 func compileExpect(t *testing.T, tpl, expected string) {
 	tpl, expected = strings.TrimSpace(tpl), strings.TrimSpace(expected)
+
 	var o strings.Builder
-	o, err := CompileToGad(tpl, true)
+	err := CompileToGad(&o, []byte(tpl), Options{})
 	if err != nil {
 		t.Errorf("Compiler expect '%s', but got error: \"%+10.2v\"", expected, err)
 	}

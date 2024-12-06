@@ -64,7 +64,8 @@ func (c *ToGadCompiler) Compile(out io.Writer) (err error) {
 		}
 
 		if c.format == FormatTranspile {
-			codeOptions = append(codeOptions, node.CodeTranspile(gad.TranspileOptions()))
+			transp := gad.TranspileOptions()
+			codeOptions = append(codeOptions, node.CodeTranspile(transp))
 		}
 
 		node.CodeW(&firstSpacerTrimWriter{w: out}, f, codeOptions...)

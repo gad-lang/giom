@@ -5,6 +5,11 @@ import "testing"
 func Test_RunPrintLines(t *testing.T) {
 	runExpect(t, compPrintLines+`
 @main
+	div
+`, `<div></div>`, nil)
+
+	runExpect(t, compPrintLines+`
+@main
 	+print_lines(["a", "b", "c", "d"])
 		@slot #line(_, i, line)
 			| line #{=str(i,"\n")}

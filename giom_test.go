@@ -11,6 +11,7 @@ import (
 	"github.com/gad-lang/gad"
 	"github.com/gad-lang/gad/parser"
 	"github.com/gad-lang/gad/parser/source"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Doctype(t *testing.T) {
@@ -392,14 +393,7 @@ func runExpect(t *testing.T, tpl, expected string, data any) {
 
 		t.Fatalf("%+5.5v", err)
 	} else {
-		if res != expected {
-			if tmpl != nil {
-				fmt.Println("-----------")
-				fmt.Println(tmpl.Source())
-				fmt.Println("-----------")
-			}
-			t.Fatalf("Expected {%s} got {%s}.", expected, res)
-		}
+		require.Equal(t, expected, res)
 	}
 }
 
@@ -462,12 +456,9 @@ func runt(tpl string, data any) (t *Template, res string, err error) {
 	}
 
 	var out bytes.Buffer
-	err = Compile(&out, []byte(tpl), Options{
-		PrettyPrint: false,
-		LineNumbers: false,
-		PreCode:     strings.Join(pc, "\n"),
-	})
-	if err != nil {
+	if err = CompileToGad(&out, []byte(tpl), Options{
+		PreCode: strings.Join(pc, "\n"),
+	}); err != nil {
 		return
 	}
 

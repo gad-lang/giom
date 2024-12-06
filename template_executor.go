@@ -74,7 +74,7 @@ func (e *TemplateExecutor) VmOptsRunner(f func(opts *gad.RunOpts)) *TemplateExec
 func (e *TemplateExecutor) Execute() (result gad.Object, err error) {
 	globals := make(gad.Dict)
 
-	for _, d := range e.global {
+	for _, d := range append([]map[string]any{e.t.Global}, e.global...) {
 		for s, a := range d {
 			if globals[s], err = gad.ToObject(a); err != nil {
 				return

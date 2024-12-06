@@ -96,6 +96,27 @@ func Compile(out io.Writer, input []byte, options Options) (err error) {
 	return
 }
 
+// CompileToGad parses and compiles the supplied giom template string. Write gad gode to out writer.
+func CompileToGad(out io.Writer, input []byte, options Options) (err error) {
+	var (
+		p    = parser.New(bytes.NewBuffer(input))
+		root *parser.Root
+	)
+
+	if root, err = p.Parse(); err != nil {
+		return
+	}
+
+	comp := New(root)
+	comp.Options = options
+
+	err = NewToGadCompiler(comp).
+		PreCode(options.PreCode).
+		Format(FormatTranspile).
+		Compile(out)
+	return
+}
+
 // Compile compiles giom and writes the Go Template source into given io.Writer instance.
 // You would not be using this unless debugging / checking the output. Please use Compile
 // method to obtain a template instance directly.

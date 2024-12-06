@@ -384,6 +384,12 @@ func (c *Compiler) visitComp(comp *parser.Comp) {
 			funcs    []parser.Node
 			children []parser.Node
 		)
+
+		if code, ok := comp.Block.Children[0].(*parser.Code); ok {
+			comp.Block.Children = comp.Block.Children[1:]
+			c.visit(code)
+		}
+
 		for _, child := range comp.Block.Children {
 			if f, _ := child.(*parser.Func); f != nil {
 				funcs = append(funcs, f)

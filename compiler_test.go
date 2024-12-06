@@ -35,10 +35,12 @@ func TestCompiler_Slots(t *testing.T) {
 		name, tpl, out string
 	}{
 		{"", `
-@if a
-	div
-@else
-	span
+@main
+	~~
+	var (x = 1, y = 2)
+	~~
+	@slot main
+		div
 `, `
 	const c1 = func c1($slots={}) {
 		const $slot$default$ = func $slot$default$() {

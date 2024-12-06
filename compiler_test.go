@@ -35,6 +35,20 @@ func TestCompiler_Slots(t *testing.T) {
 		name, tpl, out string
 	}{
 		{"", `
+@if a
+	div
+@else
+	span
+`, `
+	const c1 = func c1($slots={}) {
+		const $slot$default$ = func $slot$default$() {
+			giomTextWrite("dv")
+		}
+		var $slot$default = ($slots.default ?? (_, *args, **kwargs) => $slot$default$(*args; **kwargs))
+		$slot$default($slot$default$)
+	}
+`},
+		{"", `
 @export comp c1
 	@slot default
 		| dv
@@ -200,6 +214,7 @@ func TestCompiler_Code(t *testing.T) {
 	tests := []struct {
 		name, tpl, out string
 	}{
+		{"", `~ const Levels = (;primary,secondary)`, `print(a)`},
 		{"", `~ print(a)`, `print(a)`},
 		{"", "~ print(a)\n~ print(b)", "print(a)\n\tprint(b)"},
 		{"", `

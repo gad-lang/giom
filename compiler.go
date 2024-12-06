@@ -125,10 +125,6 @@ func (c *Compiler) Compile(out io.Writer) (err error) {
 	c.visited = map[uintptr]any{}
 	c.visit(c.root)
 
-	if c.writer.len > 0 {
-		c.write("\n")
-	}
-
 	c.write("{% return {")
 	var names [][2]string
 	for name, comp := range c.exportedComps {

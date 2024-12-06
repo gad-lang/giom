@@ -95,6 +95,9 @@ func (c *Compiler) visitRoot(root *parser.Root) {
 }
 
 func (c *Compiler) visitBlock(block *parser.Block) {
+	if block == nil {
+		return
+	}
 	for _, node := range block.Children {
 		if _, ok := node.(*parser.Text); !block.CanInline() && ok {
 			c.indent(0, true)

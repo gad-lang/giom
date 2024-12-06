@@ -4,6 +4,10 @@ import "testing"
 
 func Test_RunPrintLines(t *testing.T) {
 	runExpect(t, compPrintLines+`
+~ const Levels = (;primary,secondary)
+
+`, `<div></div>`, nil)
+	runExpect(t, compPrintLines+`
 @main
 	div
 `, `<div></div>`, nil)

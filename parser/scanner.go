@@ -663,7 +663,7 @@ func (s *scanner) scanComp() *token {
 	}
 	if sm := rgxMainComp.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokComp, Value: "main", Data: map[string]string{"Args": sm[1], "Exported": "true"}}
+		return &token{Kind: tokComp, Value: "main", Data: map[string]string{"Args": sm[2], "Exported": "true"}}
 	}
 	return nil
 }

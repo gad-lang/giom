@@ -71,7 +71,7 @@ func (e *TemplateExecutor) VmOptsRunner(f func(opts *gad.RunOpts)) *TemplateExec
 	return e
 }
 
-func (e *TemplateExecutor) Execute() (result gad.Object, err error) {
+func (e *TemplateExecutor) Execute() (vm *gad.VM, result gad.Object, err error) {
 	globals := make(gad.Dict)
 
 	for _, d := range append([]map[string]any{e.t.Global}, e.global...) {
@@ -95,9 +95,9 @@ func (e *TemplateExecutor) Execute() (result gad.Object, err error) {
 			StdErr:  e.err,
 			Globals: globals,
 		}
-
-		vm = gad.NewVM(e.t.BC)
 	)
+
+	vm = gad.NewVM(e.t.BC)
 
 	if e.vmOptsSetuper != nil {
 		e.vmOptsSetuper(setupOpts)
@@ -109,8 +109,17 @@ func (e *TemplateExecutor) Execute() (result gad.Object, err error) {
 
 	vm.Setup(*setupOpts)
 
-	var module gad.Object
-	if module, err = vm.RunOpts(runOpts); err != nil {
+	result, err = vm.RunOpts(runOpts)
+	return
+}
+
+func (e *TemplateExecutor) ExecuteModule() (result gad.Object, err error) {
+
+	var (
+		module gad.Object
+		vm     *gad.VM
+	)
+	if vm, module, err = e.Execute(); err != nil {
 		return
 	}
 
@@ -119,5 +128,6 @@ func (e *TemplateExecutor) Execute() (result gad.Object, err error) {
 			result, err = gad.NewInvoker(vm, main).Invoke(e.args, e.namedArgs)
 		}
 	}
+
 	return
 }

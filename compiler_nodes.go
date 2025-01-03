@@ -441,7 +441,7 @@ func (c *Compiler) visitCompCall(call *parser.CompCall) {
 		slotsNames []string
 	)
 
-	c.write("{% . do %}")
+	c.write("{% do %}")
 
 	if len(call.SlotPass) > 0 {
 		for i, slot := range call.SlotPass {

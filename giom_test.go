@@ -370,9 +370,33 @@ func expect(cur, expected string, t *testing.T) {
 	}
 }
 
-func runExpect(t *testing.T, tpl, expected string, data any) {
+type runOption func(opts *runOpts) error
+
+func withModule(name, source string) runOption {
+	return func(opts *runOpts) error {
+		if opts.modules == nil {
+			opts.modules = make(map[string]string)
+		}
+		opts.modules[name] = source
+		return nil
+	}
+}
+
+func withCompileOptionsHander(handle func(co *gad.CompileOptions)) runOption {
+	return func(opts *runOpts) error {
+		opts.compileOptionsHandle = handle
+		return nil
+	}
+}
+
+type runOpts struct {
+	modules              map[string]string
+	compileOptionsHandle func(co *gad.CompileOptions)
+}
+
+func runExpect(t *testing.T, tpl, expected string, data any, opt ...runOption) {
 	t.Helper()
-	tmpl, res, err := runt(tpl, data)
+	tmpl, res, err := runt(tpl, data, opt...)
 
 	if err != nil {
 		switch t := err.(type) {
@@ -397,15 +421,48 @@ func runExpect(t *testing.T, tpl, expected string, data any) {
 	}
 }
 
-func runExpectError(t *testing.T, tpl, expectedError string, data any) {
+func runExpectError(t *testing.T, tpl, expectedError string, data any, opt ...runOption) {
 	t.Helper()
-	_, _, err := runt(tpl, data)
+	_, _, err := runt(tpl, data, opt...)
 
 	if err == nil {
 		t.Fatalf("expected error, but got nil")
 	} else if err.Error() != expectedError {
 		t.Fatalf("Expected error {%s} got {%s}.", expectedError, err.Error())
 	}
+
+	switch t := err.(type) {
+	case *gad.RuntimeError:
+		fmt.Fprintf(os.Stderr, "%+v\n", t)
+		if st := t.StackTrace(); len(st) > 0 {
+			t.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(os.Stderr, 20, 20)
+		}
+	case *parser.ErrorList, *gad.CompilerError:
+		fmt.Fprintf(os.Stderr, "%+20.20v\n", t)
+	}
+
+	t.Fatalf("%+5.5v", err)
+}
+
+func runExpectErrorTrace(t *testing.T, tpl, expectedError string, trace string, h gad.ErrorHumanizing, opt ...runOption) {
+	t.Helper()
+	_, _, err := runt(tpl, nil, opt...)
+
+	if err == nil {
+		t.Fatalf("expected error, but got nil")
+	} else if expectedError != "" && err.Error() != expectedError {
+		t.Fatalf("Expected error {%s} got {%s}.", expectedError, err.Error())
+	}
+
+	var out bytes.Buffer
+
+	if me, _ := err.(*ModuleCompileError); me != nil {
+		fmt.Fprintf(&out, "Compile module %q\n", me.module)
+		err = me.err
+	}
+
+	h.Humanize(&out, err)
+	require.Equal(t, trace, out.String())
 }
 
 func run(tpl string, data any) (string, error) {
@@ -413,12 +470,28 @@ func run(tpl string, data any) (string, error) {
 	return ret, err
 }
 
-func runt(tpl string, data any) (t *Template, res string, err error) {
+type ModuleCompileError struct {
+	module string
+	err    error
+}
+
+func (e *ModuleCompileError) Error() string {
+	return fmt.Sprintf("compiling module %q: %v", e.module, e.err)
+}
+
+func runt(tpl string, data any, opt ...runOption) (t *Template, res string, err error) {
 	var (
 		globalNames []string
 		dataDict    map[string]any
 		i           int
+		opts        runOpts
 	)
+
+	for _, opt := range opt {
+		if err = opt(&opts); err != nil {
+			return
+		}
+	}
 
 	if data != nil {
 		switch t := data.(type) {
@@ -462,12 +535,33 @@ func runt(tpl string, data any) (t *Template, res string, err error) {
 		return
 	}
 
-	if t, err = NewTemplateBuilder(out.Bytes()).Build(); err != nil {
+	modules := make(map[string]string)
+
+	if opts.modules != nil {
+		var out strings.Builder
+		for k, v := range opts.modules {
+			if err = CompileToGad(&out, []byte(v), Options{}); err != nil {
+				err = &ModuleCompileError{k, err}
+				return
+			}
+			modules[k] = out.String()
+			out.Reset()
+		}
+	}
+
+	if t, err = NewTemplateBuilder(out.Bytes()).WithHandleOptions(func(co *gad.CompileOptions) {
+		for k, v := range modules {
+			co.CompilerOptions.ModuleMap.AddSourceModule(k, []byte(v))
+		}
+		if opts.compileOptionsHandle != nil {
+			opts.compileOptionsHandle(co)
+		}
+	}).Build(); err != nil {
 		return
 	}
 
 	var buf bytes.Buffer
-	if _, err = t.Executor().Out(&buf).Execute(); err != nil {
+	if _, _, err = t.Executor().Out(&buf).Execute(); err != nil {
 		return
 	}
 

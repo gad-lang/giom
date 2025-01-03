@@ -1,6 +1,64 @@
 package giom
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gad-lang/gad"
+)
+
+func Test_RunErrorTrace(t *testing.T) {
+	runExpectErrorTrace(t, `
+@main
+	+b()
+`, ``, `Compile Error: unresolved reference "b"
+	at (main):5:3
+	    3| const main = func($slots={}) {
+	    4| 	{
+	    5| 		b()
+	       		 ^
+	    6| 	}
+	    7| }
+	    8| return {main: main}
+`,
+		gad.ErrorHumanizing{},
+	)
+}
+
+func Test_RunErrorTrace2(t *testing.T) {
+	runExpectErrorTrace(t, `
+~ import("alerts")
+@main
+	div
+`, ``, `ZeroDivisionError: 
+	at (main):3:1
+	   alerts:1:2
+
+(main):3:1:
+	    3| import("alerts")
+	       ^
+alerts:1:2:
+	    1| (1 / 0)
+	        ^
+	    2| return {}`,
+		gad.ErrorHumanizing{},
+		withModule("alerts", `
+~ 1/0
+`),
+	)
+}
+
+func Test_RunDualExportedComp(t *testing.T) {
+	compileExpect(t, `
+@export comp a()
+	| a
+
+@export comp b()
+	+a()
+
+@main
+	+b()
+`, `<div></div>`)
+}
 
 func Test_RunPrintLines(t *testing.T) {
 	runExpect(t, compPrintLines+`

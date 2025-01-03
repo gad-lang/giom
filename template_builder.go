@@ -9,11 +9,12 @@ import (
 )
 
 type TemplateBuilder struct {
-	input     []byte
-	ctx       context.Context
-	module    *gad.ModuleInfo
-	moduleMap *gad.ModuleMap
-	builtins  *gad.Builtins
+	input         []byte
+	ctx           context.Context
+	module        *gad.ModuleInfo
+	moduleMap     *gad.ModuleMap
+	builtins      *gad.Builtins
+	handleOptions func(co *gad.CompileOptions)
 }
 
 func NewTemplateBuilder(gadSource []byte) *TemplateBuilder {
@@ -40,6 +41,11 @@ func (b *TemplateBuilder) WithBuiltins(builtins *gad.Builtins) *TemplateBuilder 
 	return b
 }
 
+func (b *TemplateBuilder) WithHandleOptions(handle func(co *gad.CompileOptions)) *TemplateBuilder {
+	b.handleOptions = handle
+	return b
+}
+
 func (b *TemplateBuilder) Build() (t *Template, err error) {
 	var (
 		ctx       = b.ctx
@@ -62,8 +68,7 @@ func (b *TemplateBuilder) Build() (t *Template, err error) {
 		moduleMap = helper.NewModuleMap()
 	}
 
-	var bc *gad.Bytecode
-	if bc, err = gad.Compile(b.input, gad.CompileOptions{
+	co := gad.CompileOptions{
 		CompilerOptions: gad.CompilerOptions{
 			Context:     ctx,
 			Module:      module,
@@ -71,7 +76,14 @@ func (b *TemplateBuilder) Build() (t *Template, err error) {
 			SymbolTable: gad.NewSymbolTable(builtins),
 		},
 		ScannerOptions: gp.ScannerOptions{},
-	}); err != nil {
+	}
+
+	if b.handleOptions != nil {
+		b.handleOptions(&co)
+	}
+
+	var bc *gad.Bytecode
+	if bc, err = gad.Compile(b.input, co); err != nil {
 		return
 	}
 

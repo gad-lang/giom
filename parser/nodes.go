@@ -284,6 +284,12 @@ type Slot struct {
 	ID    string
 	Scope *node.FuncParams
 	Block *Block
+	Wrap  *Wrap
+}
+
+type Wrap struct {
+	SourcePosition
+	Block *Block
 }
 
 type Func struct {

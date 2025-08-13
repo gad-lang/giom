@@ -114,11 +114,11 @@ func (e *TemplateExecutor) Execute() (vm *gad.VM, result gad.Object, err error) 
 }
 
 func (e *TemplateExecutor) ExecuteModule() (result gad.Object, err error) {
-
 	var (
 		module gad.Object
 		vm     *gad.VM
 	)
+
 	if vm, module, err = e.Execute(); err != nil {
 		return
 	}

@@ -425,7 +425,22 @@ func (c *Compiler) visitSlotDef(slot *parser.Slot) {
 	c.write(`{% const ` + localName + `$ = func` + defScope + ` %}`)
 	c.visitBlock(slot.Block)
 	c.write(`{% end %}`)
-	c.write(`{% var ` + localName + ` = $slots.` + slot.ID + ` ?? (_, *args, **kwargs) => ` + localName + `$(*args, **kwargs) %}`)
+	if slot.Wrap != nil {
+		c.write(`{% const ` + localName + `$wrap = func(slot$) %}`)
+		c.write(`{% return func(*args, **kwargs) %}`)
+		c.write(`{% const slot = (*args, **kwargs) => slot$(*args, default_slot=` + localName + `$, **kwargs) %}`)
+		c.visitBlock(slot.Wrap.Block)
+		c.write(`{% end %}`)
+		c.write(`{% end %}`)
+	}
+
+	c.write(`{% var ` + localName + ` = $slots.` + slot.ID + ` `)
+	if slot.Wrap == nil {
+		c.write(`?? `)
+	} else {
+		c.write(`? ` + localName + `$wrap($slots.` + slot.ID + `) : `)
+	}
+	c.write(`(_, *args, **kwargs) => ` + localName + `$(*args, **kwargs) %}`)
 }
 
 func (c *Compiler) visitSlot(slot *parser.Slot) {

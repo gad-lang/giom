@@ -21,44 +21,33 @@ func Test_Doctype(t *testing.T) {
 func Test_Export(t *testing.T) {
 	compileExpect(t, `
 @comp Alert()
-	div`, `${const $comps = {}}${$comps.Alert = func() do}
-<div></div>${end}
-${if __is_module__ {
-	return {
-		Alert: $comps.Alert,
-	}
-}}`)
+	div`, `const Alert = func($slots={}) {
+	write(rawstr("<div></div>";cast))
 
-	return
-	compileExpect(t, `@export X`, `${if __is_module__ {
-	return {
-		X: X,
-	}
-}}`)
-	compileExpect(t, `@export X = 2`, `${if __is_module__ {
-	return {
-		X: 2,
-	}
-}}`)
+}
+return {}`)
+
+	compileExpect(t, `@export X`, `return {X: X}`)
+	compileExpect(t, `@export X = 2`, `return {X: 2}`)
 	compileExpect(t, `~ x := 100
-@export Y = x`, `${- x := 100;}
-${if __is_module__ {
-	return {
-		Y: x,
-	}
-}}`)
+@export Y = x`, "x := 100\nreturn {Y: x}")
 }
 
 func Test_Each(t *testing.T) {
-	compileExpect(t, `@for $a, $b, $c in values
-								${=$a}`,
-		`${for $a, $b, $c in values do}${=$a}${end}`)
-	compileExpect(t, `
-@for $a, $b, $c in values
-  ${=$a}
-@else
-  | no values
-`, `${for $a, $b, $c in values do}${=$a}${else}no values${end}`)
+	cases := []struct {
+		name   string
+		tpl    string
+		expect string
+	}{
+		{"", "@for $a, $b in values\n\t#{=$a}", "for $a, $b in values {\n\tgiomTextWrite($a)\n}\nreturn {}"},
+		{"", "@for $a, $b in values\n\t#{=$a}\n@else\n\t| no values\n", "for $a, $b in values {\n\tgiomTextWrite($a)\n} else {\n\tgiomTextWrite(\"no values\")\n}\nreturn {}"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			compileExpect(t, tt.tpl, tt.expect)
+		})
+	}
 }
 
 func Test_Nesting(t *testing.T) {
@@ -72,31 +61,80 @@ func Test_Nesting(t *testing.T) {
 func Test_Comp(t *testing.T) {
 	runExpect(t, `
 		@comp a(a)
-			p ${a}
-
-		+a(1)`, `<p>1</p>`, nil)
+			p #{=a}
+		@main
+			+a(1)`, `<p>1</p>`, nil)
 }
 
 func Test_CompYied(t *testing.T) {
 	runExpect(t, `
-		@comp Alert($body=nil)
-			@if $body
-				alert
-					~ $body()
-			@else
+		@comp Alert
+			@slot main
+				@wrap
+					alert
+						+slot(*args, **kwargs)
+
 				no-alert
 
-		+Alert()
-		hr
-		+Alert()
-			p hello`, `<no-alert></no-alert><hr /><alert><p>hello</p></alert>`, nil)
+		@main
+			+Alert()
+			hr
+			+Alert()
+				p hello`, `<no-alert></no-alert><hr /><alert><p>hello</p></alert>`, nil)
+
+	runExpect(t, `
+		@comp Alert(title="anonymous")
+			@slot main(title)
+				@wrap
+					alert
+						+slot(title)
+
+				no-alert for #{=title}
+
+		@main
+			+Alert()
+			hr
+			+Alert(title="john")
+				@slot #main(title)
+					p hello #{=title}`, `<no-alert>for anonymous</no-alert><hr /><alert><p>hello john</p></alert>`, nil)
+
+	runExpect(t, `
+		@comp Alert(title="anonymous")
+			@slot main(title)
+				@wrap
+					alert
+						+slot(title)
+
+				no-alert for #{=title}
+
+		@main
+			+Alert()
+			hr
+			+Alert()
+				p hello`, `<no-alert>for anonymous</no-alert><hr /><alert><p>hello</p></alert>`, nil)
+
+	runExpect(t, `
+		@comp Alert(title="anonymous")
+			@slot main(title)
+				@wrap
+					alert
+						+slot(title)
+
+				no-alert for #{=title}
+
+		@main
+			+Alert()
+			hr
+			+Alert()
+				@slot #main(title)
+					p hello #{=title}`, `<no-alert>for anonymous</no-alert><hr /><alert><p>hello anonymous</p></alert>`, nil)
 }
 
 func Test_CompYied2(t *testing.T) {
 	runExpect(t, `
 		@comp Alert(*args, $body=nil)
 			@if args
-				${args[0]}
+				#{args[0]}
 			@else if $body
 				~ $body()
 
@@ -110,7 +148,7 @@ func Test_Comp_Loop(t *testing.T) {
 	runExpect(t, `
 		@comp repeat($value, $from, $to)
 			@if $from < $to
-				${$value}
+				#{$value}
 				+repeat($value, $from+1, $to)
 
 		+repeat("a", 0, 3)`, `aaa`, nil)
@@ -118,7 +156,7 @@ func Test_Comp_Loop(t *testing.T) {
 	runExpect(t, `
 		~ d := {}
 		@comp m(v)
-			${v}
+			#{v}
 		+m(1)
 		~ d.m = $comps.m
 		+d.m(2)`, `12`, nil)
@@ -135,7 +173,7 @@ func Test_Comp_NoArguments(t *testing.T) {
 func Test_Comp_MultiArguments(t *testing.T) {
 	runExpect(t, `
 		@comp a($a, $b, $c, $d)
-			p ${$a} ${$b} ${$c} ${$d}
+			p #{$a} #{$b} #{$c} #{$d}
 
 		+a("a", "b", "c", A)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
 }
@@ -143,7 +181,7 @@ func Test_Comp_MultiArguments(t *testing.T) {
 func Test_Comp_NameWithDashes(t *testing.T) {
 	runExpect(t, `
 		@comp i-am-mixin($a, $b, $c, $d)
-			p ${$a} ${$b} ${$c} ${$d}
+			p #{$a} #{$b} #{$c} #{$d}
 
 		+i-am-mixin("a", "b", "c", A)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
 }
@@ -151,7 +189,7 @@ func Test_Comp_NameWithDashes(t *testing.T) {
 func Test_Comp_Unknown(t *testing.T) {
 	_, err := run(`
 		@comp foo($a)
-			p ${$a}
+			p #{$a}
 
 		+bar(1)`, nil)
 
@@ -166,7 +204,7 @@ func Test_Comp_Unknown(t *testing.T) {
 func Test_Comp_NotEnoughArguments(t *testing.T) {
 	_, err := run(`
 		mixin foo($a)
-			p ${$a}
+			p #{$a}
 
 		+foo()`, nil)
 
@@ -181,7 +219,7 @@ func Test_Comp_NotEnoughArguments(t *testing.T) {
 func Test_Comp_TooManyArguments(t *testing.T) {
 	_, err := run(`
 		mixin foo($a)
-			p ${$a}
+			p #{$a}
 
 		+foo("a", "b")`, nil)
 
@@ -293,7 +331,7 @@ func Test_Empty(t *testing.T) {
 }
 
 func Test_ArithmeticExpression(t *testing.T) {
-	res, err := run(`${A + B * C}`, map[string]int{"A": 2, "B": 3, "C": 4})
+	res, err := run(`#{A + B * C}`, map[string]int{"A": 2, "B": 3, "C": 4})
 
 	if err != nil {
 		t.Fatal(err.Error())
@@ -303,7 +341,7 @@ func Test_ArithmeticExpression(t *testing.T) {
 }
 
 func Test_BooleanExpression(t *testing.T) {
-	res, err := run(`${C - A < B}`, map[string]int{"A": 2, "B": 3, "C": 4})
+	res, err := run(`#{C - A < B}`, map[string]int{"A": 2, "B": 3, "C": 4})
 
 	if err != nil {
 		t.Fatal(err.Error())
@@ -561,7 +599,7 @@ func runt(tpl string, data any, opt ...runOption) (t *Template, res string, err 
 	}
 
 	var buf bytes.Buffer
-	if _, _, err = t.Executor().Out(&buf).Execute(); err != nil {
+	if _, err = t.Executor().Out(&buf).ExecuteModule(); err != nil {
 		return
 	}
 

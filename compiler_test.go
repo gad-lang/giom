@@ -35,6 +35,53 @@ func TestCompiler_Slots(t *testing.T) {
 		name, tpl, out string
 	}{
 		{"", `
+@comp c1
+	~~
+	var (x = 1, y = 2)
+	~~
+	@slot main(x)
+		div
+
+@comp c2
+	+c1()
+		@slot #main(x)
+			a #{x}
+`, `
+const c1 = func($slots={}) {
+	var (
+		x = 1
+		y = 2
+	)
+
+	const $slot$main$ = func() {
+		write(rawstr("<div></div>";cast))
+
+	}
+	var $slot$main = ($slots.main ?? (_, *args, **kwargs) => $slot$main$(*args; **kwargs))
+	$slot$main($slot$main$)
+}
+const c2 = func($slots={}) {
+	const $slot$main$ = func() {
+		write(rawstr("<a>";cast))
+
+		x
+		write(rawstr("</a>";cast))
+
+	}
+	var $slot$main = ($slots.main ?? (_, *args, **kwargs) => $slot$main$(*args; **kwargs))
+	{
+		const slot$0 = func(*args, **kwargs) {
+			$slot$main($slot$main$)
+		}
+		var $$slots = {}
+		$$slots["main"] = slot$0
+		c1(; $slots=$$slots)
+	}
+}
+return {}
+`},
+
+		{"", `
 @main
 	~~
 	var (x = 1, y = 2)
@@ -42,13 +89,20 @@ func TestCompiler_Slots(t *testing.T) {
 	@slot main
 		div
 `, `
-	const c1 = func c1($slots={}) {
-		const $slot$default$ = func $slot$default$() {
-			giomTextWrite("dv")
-		}
-		var $slot$default = ($slots.default ?? (_, *args, **kwargs) => $slot$default$(*args; **kwargs))
-		$slot$default($slot$default$)
+const main = func($slots={}) {
+	var (
+		x = 1
+		y = 2
+	)
+
+	const $slot$main$ = func() {
+		write(rawstr("<div></div>";cast))
+
 	}
+	var $slot$main = ($slots.main ?? (_, *args, **kwargs) => $slot$main$(*args; **kwargs))
+	$slot$main($slot$main$)
+}
+return {main: main}
 `},
 		{"", `
 @export comp c1
@@ -118,15 +172,7 @@ func TestCompiler_Slots(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			compileExpect(t, tt.tpl, `
-# gad: mixed
-{%
-	`+strings.TrimSpace(tt.out)+`
-%}
-{%
-	return {}
-%}
-`)
+			compileExpect(t, tt.tpl, strings.TrimSpace(tt.out))
 		})
 	}
 }
@@ -558,5 +604,5 @@ func compileExpect(t *testing.T, tpl, expected string) {
 	if err != nil {
 		t.Errorf("Compiler expect '%s', but got error: \"%+10.2v\"", expected, err)
 	}
-	require.Equal(t, expected, o.String())
+	require.Equal(t, expected, strings.TrimSpace(o.String()))
 }

@@ -3,7 +3,7 @@ module github.com/gad-lang/giom
 go 1.23.3
 
 require (
-	github.com/gad-lang/gad v0.0.0-20250411183241-62109872e167
+	github.com/gad-lang/gad v0.0.0-20250813150123-51c4a41b93f4
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -19,4 +19,4 @@ require (
 	mvdan.cc/sh/v3 v3.3.1 // indirect
 )
 
-//replace github.com/gad-lang/gad v0.0.0-20250411183241-62109872e167 => ../gad
+// replace github.com/gad-lang/gad  => ../gad

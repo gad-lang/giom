@@ -145,6 +145,8 @@ func (p *Parser) parse() Node {
 		return p.parseSlot()
 	case tokSlotPass:
 		return p.parseSlotPass()
+	case tokWrap:
+		return p.parseWrap()
 	case tokIndent:
 		return p.parseBlock(nil)
 	case tokFunc:
@@ -357,7 +359,22 @@ func (p *Parser) parseSlot() (s *Slot) {
 
 	if p.currenttoken.Kind == tokIndent {
 		s.Block = p.parseBlock(s)
+		if len(s.Block.Children) > 0 {
+			if w, ok := s.Block.Children[0].(*Wrap); ok {
+				s.Block.Children = s.Block.Children[1:]
+				s.Wrap = w
+			}
+		}
 	}
+	return
+}
+
+func (p *Parser) parseWrap() (w *Wrap) {
+	p.expect(tokWrap)
+	w = &Wrap{
+		SourcePosition: p.pos(),
+	}
+	w.Block = p.parseBlock(w)
 	return
 }
 

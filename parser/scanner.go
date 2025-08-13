@@ -38,6 +38,7 @@ const (
 	tokAttribute
 	tokIf
 	tokElseIf
+	tokWrap
 	tokElse
 	tokFor
 	tokAssignment
@@ -68,6 +69,7 @@ var tokNames = [...]string{
 	tokAttribute:    "ATTRIBUTE",
 	tokIf:           "IF",
 	tokElseIf:       "ELSE_IF",
+	tokWrap:         "WRAP",
 	tokElse:         "ELSE",
 	tokFor:          "FOR",
 	tokAssignment:   "ASSIGNMENT",
@@ -587,11 +589,17 @@ func (s *scanner) scanImportModule() *token {
 }
 
 var rgxSlot = regexp.MustCompile(`^@slot\s+([a-zA-Z_-]+\w*)(\((.*)\))?$`)
+var rgxWrap = regexp.MustCompile(`^@wrap\s*$`)
 
 func (s *scanner) scanSlot() *token {
 	if sm := rgxSlot.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		return &token{Kind: tokSlot, Value: sm[1], Data: map[string]string{"Args": sm[3]}}
+	}
+
+	if sm := rgxWrap.FindString(s.buffer); len(sm) != 0 {
+		s.consume(len(sm))
+		return &token{Kind: tokWrap}
 	}
 
 	return nil

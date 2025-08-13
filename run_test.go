@@ -15,7 +15,7 @@ func Test_RunErrorTrace(t *testing.T) {
 	    3| const main = func($slots={}) {
 	    4| 	{
 	    5| 		b()
-	       		 ^
+	       		^
 	    6| 	}
 	    7| }
 	    8| return {main: main}
@@ -57,14 +57,27 @@ func Test_RunDualExportedComp(t *testing.T) {
 
 @main
 	+b()
-`, `<div></div>`)
+`, `const a = func($slots={}) {
+	giomTextWrite("a")
+}
+const b = func($slots={}) {
+	{
+		a()
+	}
+}
+const main = func($slots={}) {
+	{
+		b()
+	}
+}
+return {a: a, b: b, main: main}`)
 }
 
 func Test_RunPrintLines(t *testing.T) {
 	runExpect(t, compPrintLines+`
 ~ const Levels = (;primary,secondary)
 
-`, `<div></div>`, nil)
+`, ``, nil)
 	runExpect(t, compPrintLines+`
 @main
 	div

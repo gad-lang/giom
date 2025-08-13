@@ -66,82 +66,101 @@ func Test_Comp(t *testing.T) {
 			+a(1)`, `<p>1</p>`, nil)
 }
 
-func Test_CompYied(t *testing.T) {
-	runExpect(t, `
+func Test_CompSlot(t *testing.T) {
+	tests := []struct {
+		name, tpl, out string
+		data           any
+	}{
+		{"", `
 		@comp Alert
 			@slot main
-				@wrap
-					alert
-						+slot(*args, **kwargs)
-
-				no-alert
+				| default message
 
 		@main
 			+Alert()
-			hr
+			| #
 			+Alert()
-				p hello`, `<no-alert></no-alert><hr /><alert><p>hello</p></alert>`, nil)
-
-	runExpect(t, `
-		@comp Alert(title="anonymous")
+				| custom message
+`,
+			"default message#custom message",
+			nil,
+		},
+		{"", `
+		@comp Alert
+			~ const title = "TITLE"
 			@slot main(title)
-				@wrap
-					alert
-						+slot(title)
-
-				no-alert for #{=title}
+				| default title: #{=title}
 
 		@main
 			+Alert()
-			hr
-			+Alert(title="john")
-				@slot #main(title)
-					p hello #{=title}`, `<no-alert>for anonymous</no-alert><hr /><alert><p>hello john</p></alert>`, nil)
-
-	runExpect(t, `
-		@comp Alert(title="anonymous")
-			@slot main(title)
-				@wrap
-					alert
-						+slot(title)
-
-				no-alert for #{=title}
-
-		@main
+			| #
 			+Alert()
-			hr
-			+Alert()
-				p hello`, `<no-alert>for anonymous</no-alert><hr /><alert><p>hello</p></alert>`, nil)
-
-	runExpect(t, `
-		@comp Alert(title="anonymous")
-			@slot main(title)
-				@wrap
-					alert
-						+slot(title)
-
-				no-alert for #{=title}
-
-		@main
-			+Alert()
-			hr
+				| no title
+			| #
 			+Alert()
 				@slot #main(title)
-					p hello #{=title}`, `<no-alert>for anonymous</no-alert><hr /><alert><p>hello anonymous</p></alert>`, nil)
-}
+					| user title: #{=title}
+`,
+			"default title: TITLE#no title#user title: TITLE",
+			nil,
+		},
+		{"", `
+		@comp Alert(title)
+			@slot main(title)
+				| default title: #{=title}
 
-func Test_CompYied2(t *testing.T) {
-	runExpect(t, `
-		@comp Alert(*args, $body=nil)
-			@if args
-				#{args[0]}
-			@else if $body
-				~ $body()
+		@main
+			+Alert("T1")
+			| #
+			+Alert("T2")
+				| no title
+			| #
+			+Alert("T3")
+				@slot #main(title)
+					| user title: #{=title}
+`,
+			"default title: T1#no title#user title: T3",
+			nil,
+		},
+		{"", `
+		@comp Alert(title, key="no_key")
+			@slot main(title,key2=key)
+				| default title: #{=title}+#{=key}
 
-		+Alert("hello")
-		hr
-		+Alert()
-			p world`, `hello<hr /><p>world</p>`, nil)
+		@main
+			+Alert("T1")
+			| #
+			+Alert("T2")
+				| no title
+			| #
+			+Alert("T3")
+				@slot #main(title, key2=nil)
+					| user title: #{=title}@#{=key2}
+			| #
+			+Alert("T1",key="xxx")
+			| #
+			+Alert("T2",key="xxx")
+				| no title
+			| #
+			+Alert("T3",key="yyy")
+				@slot #main(title, key2=nil)
+					| user title: #{=title}@#{=key2}
+			| #
+			+Alert("T4",key="zzz")
+				@slot #main(title, key2=nil)
+					| user title: #{=title}@#{=key2}
+`,
+			"default title: T1+no_key#no title#user title: T3@no_key#default title: T1+xxx#no title#" +
+				"user title: T3@yyy#user title: T4@zzz",
+			nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runExpect(t, tt.tpl, tt.out, tt.data)
+		})
+	}
 }
 
 func Test_Comp_Loop(t *testing.T) {
@@ -435,27 +454,45 @@ type runOpts struct {
 func runExpect(t *testing.T, tpl, expected string, data any, opt ...runOption) {
 	t.Helper()
 	tmpl, res, err := runt(tpl, data, opt...)
+	printSource := func() {
+		if tmpl == nil {
+			return
+		}
+		fmt.Fprint(os.Stderr, "\n\n%%%%%%%%%%%% BEGIN SOURCE CODE %%%%%%%%%%%%\n")
+		lines := strings.Split(tmpl.Source(), "\n")
+		for i, line := range lines {
+			fmt.Fprintf(os.Stderr, "%04d | %s\n", i+1, line)
+		}
+		fmt.Fprint(os.Stderr, "%%%%%%%%%%%% END SOURCE CODE %%%%%%%%%%%%\n")
+	}
 
 	if err != nil {
-		switch t := err.(type) {
+		switch et := err.(type) {
 		case *gad.RuntimeError:
-			fmt.Fprintf(os.Stderr, "%+v\n", t)
-			if st := t.StackTrace(); len(st) > 0 {
-				t.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(os.Stderr, 20, 20)
+			fmt.Fprintf(os.Stderr, "%+v\n", et)
+			if st := et.StackTrace(); len(st) > 0 {
+				et.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(os.Stderr, 3, 3)
 			}
+			printSource()
+			t.Fatal(err.Error())
 		case *parser.ErrorList, *gad.CompilerError:
-			fmt.Fprintf(os.Stderr, "%+20.20v\n", t)
+			fmt.Fprintf(os.Stderr, "%+3.3v\n", et)
+			printSource()
+			t.Fatal(err.Error())
 		default:
-			if tmpl != nil {
-				fmt.Println("-----------")
-				fmt.Println(tmpl.Source())
-				fmt.Println("-----------")
-			}
+			printSource()
 		}
 
 		t.Fatalf("%+5.5v", err)
 	} else {
+		var ok bool
+		defer func() {
+			if !ok {
+				printSource()
+			}
+		}()
 		require.Equal(t, expected, res)
+		ok = true
 	}
 }
 

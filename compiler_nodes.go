@@ -428,24 +428,23 @@ func (c *Compiler) visitSlotDef(slot *parser.Slot) {
 	if slot.Wrap != nil {
 		c.write(`{% const ` + localName + `$wrap = func(slot$) %}`)
 		c.write(`{% return func(*args, **kwargs) %}`)
-		c.write(`{% const slot = (*args, **kwargs) => slot$(*args, default_slot=` + localName + `$, **kwargs) %}`)
+		c.write(`{% const (user_slot = $slots.` + slot.ID + `) %}`)
+		c.write(`{% const slot = (*args, **kwargs) => slot$(*args, **kwargs) %}`)
 		c.visitBlock(slot.Wrap.Block)
 		c.write(`{% end %}`)
 		c.write(`{% end %}`)
 	}
 
-	c.write(`{% var ` + localName + ` = $slots.` + slot.ID + ` `)
-	if slot.Wrap == nil {
-		c.write(`?? `)
+	if slot.Wrap != nil {
+		c.write(`{% var ` + localName + ` = ` + localName + `$wrap($slots.` + slot.ID + ` ?? ` + localName + `$) %}`)
 	} else {
-		c.write(`? ` + localName + `$wrap($slots.` + slot.ID + `) : `)
+		c.write(`{% var ` + localName + ` = $slots.` + slot.ID + ` ?? ` + localName + `$ %}`)
 	}
-	c.write(`(_, *args, **kwargs) => ` + localName + `$(*args, **kwargs) %}`)
 }
 
 func (c *Compiler) visitSlot(slot *parser.Slot) {
 	localName := "$slot$" + slot.ID
-	slot.Scope.Args.PrependValue(node.ETypedIdent(node.EIdent(localName+"$", 0)))
+	slot.Scope.NamedArgs.Add(node.ETypedIdent(node.EIdent("default_slot", 0)), node.EIdent(localName+"$", 0))
 	call := slot.Scope.Caller().String()
 	c.write(`{% ` + localName + call + ` %}`)
 }

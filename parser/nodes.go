@@ -165,7 +165,7 @@ type Attribute struct {
 	IsRaw     bool
 	IsFlag    bool
 	Condition string
-	Elements  []*node.KeyValueLit
+	Elements  *node.KeyValueArrayLit
 }
 
 type Tag struct {

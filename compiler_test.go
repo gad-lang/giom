@@ -111,7 +111,7 @@ return {main: main}
 `, `
 	const c1 = func c1($slots={}) {
 		const $slot$default$ = func $slot$default$() {
-			giomTextWrite("dv")
+			giom$write("dv")
 		}
 		var $slot$default = ($slots.default ?? (_, *args, **kwargs) => $slot$default$(*args; **kwargs))
 		$slot$default($slot$default$)
@@ -125,7 +125,7 @@ return {main: main}
 `, `
 	const print_lines = func print_lines(rows, $slots={}) {
 		const $slot$item$ = func $slot$item$(i, line) {
-			giomTextWrite(i, " => ", line, "\n")
+			giom$write(i, " => ", line, "\n")
 		}
 		var $slot$item = ($slots.item ?? (_, *args, **kwargs) => $slot$item$(*args; **kwargs))
 		for i, line in rows {
@@ -136,7 +136,7 @@ return {main: main}
 		{"compPrintLines", compPrintLines, `
 	const print_lines = func print_lines(rows, $slots={}) {
 		const print_line = func print_line(i, line) {
-			giomTextWrite(i, ": ", line, "\n")
+			giom$write(i, ": ", line, "\n")
 		}
 		const $slot$line$ = func $slot$line$(i, line) {
 			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
@@ -155,7 +155,7 @@ return {main: main}
 `, `
 	const print_lines = func print_lines(rows, $slots={}) {
 		const print_line = func print_line(i, line) {
-			giomTextWrite(i, ": ", line, "\n")
+			giom$write(i, ": ", line, "\n")
 		}
 		const $slot$line$ = func $slot$line$(i, line) {
 			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
@@ -189,7 +189,7 @@ func TestCompiler_Slots2(t *testing.T) {
 `, `
 	const print_lines = func print_lines(rows, $slots={}) {
 		const print_line = func print_line(i, line) {
-			giomTextWrite(i, ": ", line, "\n")
+			giom$write(i, ": ", line, "\n")
 		}
 		const $slot$line$ = func $slot$line$(i, line) {
 			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
@@ -202,7 +202,7 @@ func TestCompiler_Slots2(t *testing.T) {
 	const run = func run($slots={}) {
 		.{
 			const $slot$0 = func $slot$0(i, line) {
-				giomTextWrite("linha 2")
+				giom$write("linha 2")
 			}
 			var $childSlots = {}
 			$childSlots[("item[2]")] = $slot$0
@@ -216,11 +216,11 @@ func TestCompiler_Slots2(t *testing.T) {
 		@slot #( "item[2]" )(i, line)
 			| linha 2
 
-		~ $childSlots["item[4]"] = (i, line) => giomTextWrite("four line", "\n")
+		~ $childSlots["item[4]"] = (i, line) => giom$write("four line", "\n")
 `, `
 	const print_lines = func print_lines(rows, $slots={}) {
 		const print_line = func print_line(i, line) {
-			giomTextWrite(i, ": ", line, "\n")
+			giom$write(i, ": ", line, "\n")
 		}
 		const $slot$line$ = func $slot$line$(i, line) {
 			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
@@ -233,11 +233,11 @@ func TestCompiler_Slots2(t *testing.T) {
 	const run = func run($slots={}) {
 		.{
 			const $slot$0 = func $slot$0(i, line) {
-				giomTextWrite("linha 2")
+				giom$write("linha 2")
 			}
 			var $childSlots = {}
 			$childSlots[("item[2]")] = $slot$0
-			$childSlots["item[4]"] = (i, line) => giomTextWrite("four line", "\n")
+			$childSlots["item[4]"] = (i, line) => giom$write("four line", "\n")
 			print_lines(; $slots=$childSlots)
 		}
 	}
@@ -306,40 +306,40 @@ func TestCompiler_Text(t *testing.T) {
 		name, tpl, out string
 	}{
 		{"", `| #{= func(a){return {v:a}}(5).v }`, `
-	giomTextWrite(func(a) {
+	giom$write(func(a) {
 		return {v: a}
 	}(5).v)`},
 
-		{"", `| #{= x + 2 }`, `giomTextWrite(((x + 2)))`},
+		{"", `| #{= x + 2 }`, `giom$write(((x + 2)))`},
 
-		{"", `| #{= x }`, `giomTextWrite(x)`},
+		{"", `| #{= x }`, `giom$write(x)`},
 
 		{"", `| a #{- x -} b #{-= c }`, `
-	giomTextWrite("a")
+	giom$write("a")
 	x
-	giomTextWrite("b", c)`},
+	giom$write("b", c)`},
 
 		{"", `| a #{- x } b #{= c }`, `
-	giomTextWrite("a")
+	giom$write("a")
 	x
-	giomTextWrite(" b ", c)`},
+	giom$write(" b ", c)`},
 
 		{"", `| a #{- x } b`, `
-	giomTextWrite("a")
+	giom$write("a")
 	x
-	giomTextWrite(" b")`},
+	giom$write(" b")`},
 
 		{"", `| a #{- x }`, `
-	giomTextWrite("a")
+	giom$write("a")
 	x`},
 
 		{"", `| a #{ x }`, `
-	giomTextWrite("a ")
+	giom$write("a ")
 	x`},
 
-		{"", `| a`, `giomTextWrite("a")`},
+		{"", `| a`, `giom$write("a")`},
 
-		{"", `| link <a href="/">see</a> b`, `giomTextWrite("link <a href=\"/\">see</a> b")`},
+		{"", `| link <a href="/">see</a> b`, `giom$write("link <a href=\"/\">see</a> b")`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -361,11 +361,11 @@ func TestCompiler_ClassCondition(t *testing.T) {
 button
 	.active ? $index : ""
 `, `
-# gad: mixed
-<button{%=attrs(; class=(($index ? "active" : "")))%}></button>
-{%
-	return {}
-%}
+write(rawstr("<button";cast))
+write(giom$attrs(; class=(($index ? "active" : ""))))
+write(rawstr("></button>";cast))
+
+return {}
 `)
 }
 

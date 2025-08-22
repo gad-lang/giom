@@ -9,7 +9,7 @@ import (
 
 var (
 	BuiltinEscape = &gad.Function{
-		Name: "escape",
+		Name: "giom$escape",
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			if err = call.Args.CheckLen(1); err != nil {
 				return
@@ -83,7 +83,7 @@ var (
 	}
 
 	BuiltinAttr = &gad.Function{
-		Name: "attr",
+		Name: "giom$attr",
 		Value: func(call gad.Call) (ret gad.Object, err error) {
 			if err = call.Args.CheckLen(2); err != nil {
 				return
@@ -95,22 +95,196 @@ var (
 	}
 
 	BuiltinAttrs = &gad.Function{
-		Name: "attrs",
+		Name: "giom$attrs",
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			var (
-				b  strings.Builder
-				rs gad.RawStr
+				b      strings.Builder
+				rs     gad.RawStr
+				keys   []string
+				d      = make(gad.Dict)
+				class  []string
+				style  []string
+				filter func(arr gad.Array) (ret gad.Array)
 			)
 
-			call.NamedArgs.Walk(func(na *gad.KeyValue) error {
-				if rs, err = AttrFunc(call.VM, na.K, na.V); err == nil && rs != "" {
-					b.WriteString(" " + string(rs))
+			filter = func(arr gad.Array) (ret gad.Array) {
+				for _, v := range arr {
+					switch t := v.(type) {
+					case *gad.KeyValue:
+						if !t.K.IsFalsy() {
+							ret = append(ret, t.V)
+						}
+					case gad.Array:
+						ret = append(ret, filter(t)...)
+					default:
+						if !t.IsFalsy() {
+							ret = append(ret, t)
+						}
+					}
+				}
+				return
+			}
+
+			cb := func(na *gad.KeyValue) (err error) {
+				var k string
+				switch t := na.K.(type) {
+				case gad.Bool:
+
+				case gad.Str:
+					k = string(t)
+				case gad.RawStr:
+					k = string(t)
+				default:
+					var s gad.Str
+					if s, err = gad.ToStr(call.VM, t); err != nil {
+						return
+					}
+					k = string(s)
+				}
+				switch k {
+				case "class":
+					if !na.V.IsFalsy() {
+						switch t := na.V.(type) {
+						case gad.Str:
+							if len(t) > 0 {
+								class = append(class, string(t))
+							}
+						case gad.RawStr:
+							if len(t) > 0 {
+								class = append(class, string(t))
+							}
+						case *gad.KeyValue:
+							if !t.K.IsFalsy() {
+								var arr gad.Array
+								switch t := t.V.(type) {
+								case gad.Array:
+									arr = t
+								default:
+									arr = gad.Array{t}
+								}
+								for _, o := range filter(arr) {
+									var s gad.Str
+									if s, err = gad.ToStr(call.VM, o); err != nil {
+										return
+									}
+									class = append(class, string(s))
+								}
+							}
+						case gad.Array:
+							for _, o := range filter(t) {
+								var s gad.Str
+								if s, err = gad.ToStr(call.VM, o); err != nil {
+									return
+								}
+								class = append(class, string(s))
+							}
+						}
+					}
+				case "style":
+					switch t := na.V.(type) {
+					case gad.Str:
+						if len(t) > 0 {
+							style = append(style, string(t))
+						}
+					case gad.RawStr:
+						if len(t) > 0 {
+							style = append(style, string(t))
+						}
+					case *gad.KeyValue:
+						if !t.K.IsFalsy() {
+							var arr gad.Array
+							switch t := t.V.(type) {
+							case gad.Array:
+								arr = t
+							default:
+								arr = gad.Array{t}
+							}
+							for _, o := range filter(arr) {
+								var s gad.Str
+								if s, err = gad.ToStr(call.VM, o); err != nil {
+									return
+								}
+								style = append(style, string(s))
+							}
+						}
+					case gad.Array:
+						for _, o := range filter(t) {
+							var s gad.Str
+							if s, err = gad.ToStr(call.VM, o); err != nil {
+								return
+							}
+							style = append(style, string(s))
+						}
+					case gad.Dict:
+						for key, o := range t {
+							var s gad.Str
+							if s, err = gad.ToStr(call.VM, o); err != nil {
+								return
+							}
+							style = append(style, key+":"+string(s))
+						}
+					}
+				default:
+					v := na.V
+					switch t := v.(type) {
+					case *gad.KeyValue:
+						if t.K.IsFalsy() {
+							return
+						}
+						v = t.V
+					}
+					if _, ok := d[k]; !ok {
+						keys = append(keys, k)
+					}
+					d[k] = v
 				}
 				return err
+			}
+
+			err = call.NamedArgs.Walk(func(na *gad.KeyValue) (err error) {
+				var v gad.Object = na
+				switch t := na.K.(type) {
+				case gad.Bool:
+					if !t {
+						return
+					}
+					v = na.V
+				}
+				switch t := v.(type) {
+				case gad.Array:
+					return gad.ItemsOfCb(call.VM, &gad.NamedArgs{}, cb, na.V)
+				case *gad.KeyValue:
+					return cb(t)
+				case gad.KeyValueArray:
+					for _, value := range t {
+						if err = cb(value); err != nil {
+							return
+						}
+					}
+					return
+				default:
+					return cb(na)
+				}
 			})
 
 			if err != nil {
 				return
+			}
+
+			for _, key := range keys {
+				if rs, err = AttrFunc(call.VM, gad.Str(key), d[key]); err == nil && rs != "" {
+					b.WriteString(" " + string(rs))
+				}
+			}
+
+			if len(class) > 0 {
+				b.WriteString(" class=")
+				b.WriteString(strconv.Quote(strings.Join(class, " ")))
+			}
+
+			if len(style) > 0 {
+				b.WriteString(" style=")
+				b.WriteString(strconv.Quote(strings.Join(style, "; ")))
 			}
 
 			return gad.RawStr(b.String()), nil
@@ -118,7 +292,7 @@ var (
 	}
 
 	BuiltinTextWrite = &gad.Function{
-		Name: "giomTextWrite",
+		Name: "giom$write",
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			return call.VM.Builtins.Call(gad.BuiltinWrite, call)
 		},

@@ -58,7 +58,7 @@ func Test_RunDualExportedComp(t *testing.T) {
 @main
 	+b()
 `, `const a = func($slots={}) {
-	giomTextWrite("a")
+	giom$write("a")
 }
 const b = func($slots={}) {
 	{

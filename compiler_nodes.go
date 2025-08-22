@@ -2,7 +2,6 @@ package giom
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -201,27 +200,31 @@ func gadParser(value string) *gp.Parser {
 }
 
 func (c *Compiler) visitTag(tag *parser.Tag) {
-	parseAttr := func(value string) (items []*node.KeyValueLit) {
-		p := gadParser("[" + value + "]")
+	parseAttr := func(value string) (items node.Exprs) {
+		p := gadParser(value)
 		lbrack := p.Expect(gt.LBrack)
 		ret := p.ParseKeyValueArrayLitAt(lbrack, gt.RBrack)
 		if err := p.Errors.Err(); err != nil {
 			panic(err)
 		}
-		return ret.Elements
+		for _, e := range ret.Elements {
+			switch e := e.(type) {
+			case *node.KeyValuePairLit:
+				items = append(items, e)
+			case *node.KeyValueLit:
+				items = append(items, &node.KeyValuePairLit{e.Key, e.Value})
+			}
+		}
+		return
 	}
 
 	var (
-		attribs []*node.KeyValueLit
-		am      = map[string]*struct {
-			Key    node.Expr
-			Values []node.Expr
-		}{}
+		attribs node.Exprs
 	)
 
 	for _, item := range tag.Attributes {
 		if item.Elements != nil {
-			attribs = append(attribs, item.Elements...)
+			attribs = append(attribs, item.Elements.Elements...)
 			continue
 		}
 		value := item.Value
@@ -247,39 +250,7 @@ func (c *Compiler) visitTag(tag *parser.Tag) {
 			item.Name = strconv.Quote(item.Name)
 		}
 
-		attribs = append(attribs, parseAttr(item.Name+"="+value)...)
-	}
-
-	var keys []string
-
-	for _, at := range attribs {
-		k := at.Key.String()
-		if old, ok := am[k]; ok {
-			old.Values = append(old.Values, at.Value)
-		} else {
-			keys = append(keys, k)
-			am[k] = &struct {
-				Key    node.Expr
-				Values []node.Expr
-			}{Key: at.Key, Values: []node.Expr{at.Value}}
-		}
-	}
-
-	sort.Strings(keys)
-
-	attribs = nil
-
-	for _, key := range keys {
-		a := am[key]
-		kv := &node.KeyValueLit{Key: a.Key}
-		switch len(a.Values) {
-		case 0:
-		case 1:
-			kv.Value = a.Values[0]
-		default:
-			kv.Value = &node.ArrayExpr{Elements: a.Values}
-		}
-		attribs = append(attribs, kv)
+		attribs = append(attribs, parseAttr("["+item.Name+"="+value+"]")...)
 	}
 
 	c.indent(0, true)
@@ -287,8 +258,8 @@ func (c *Compiler) visitTag(tag *parser.Tag) {
 	c.write("<" + tag.Name)
 
 	if len(attribs) > 0 {
-		c.write("{%=attrs")
-		c.write((&node.KeyValueArrayLit{Elements: attribs}).String())
+		c.write("{%=giom$attrs")
+		node.CodeW(&firstSpacerTrimWriter{w: c.writer}, &node.KeyValueArrayLit{Elements: attribs})
 		c.write("%}")
 	}
 

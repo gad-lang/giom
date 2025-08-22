@@ -15,7 +15,7 @@ func parse(s string, text bool) (_ []node.Stmt, err error) {
 	so := &parser.ScannerOptions{}
 
 	if text {
-		po.Mode |= parser.ParseMixed
+		po.Mode |= parser.ParseMixed | parser.ParseMixedExprAsValue
 		so.MixedDelimiter.Start = []rune("#{")
 		so.MixedDelimiter.End = []rune("}")
 	}

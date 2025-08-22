@@ -542,8 +542,8 @@ func (s *scanner) scanAttribute() *token {
 		lbrack := p.Expect(gt.LBrack)
 		ret := p.ParseKeyValueArrayLitAt(lbrack, gt.RBrack)
 		if p.Errors.Err() == nil {
-			s.consume(int(ret.RBrace))
-			return &token{Kind: tokAttribute, AnyValue: ret.Elements}
+			s.consume(int(ret.RParen))
+			return &token{Kind: tokAttribute, AnyValue: ret}
 		}
 
 		// value := s.buffer[:i]

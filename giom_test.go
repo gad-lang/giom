@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -39,8 +40,8 @@ func Test_Each(t *testing.T) {
 		tpl    string
 		expect string
 	}{
-		{"", "@for $a, $b in values\n\t#{=$a}", "for $a, $b in values {\n\tgiomTextWrite($a)\n}\nreturn {}"},
-		{"", "@for $a, $b in values\n\t#{=$a}\n@else\n\t| no values\n", "for $a, $b in values {\n\tgiomTextWrite($a)\n} else {\n\tgiomTextWrite(\"no values\")\n}\nreturn {}"},
+		{"", "@for $a, $b in values\n\t#{=$a}", "for $a, $b in values {\n\tgiom$write($a)\n}\nreturn {}"},
+		{"", "@for $a, $b in values\n\t#{=$a}\n@else\n\t| no values\n", "for $a, $b in values {\n\tgiom$write($a)\n} else {\n\tgiom$write(\"no values\")\n}\nreturn {}"},
 	}
 
 	for _, tt := range cases {
@@ -165,20 +166,22 @@ func Test_CompSlot(t *testing.T) {
 
 func Test_Comp_Loop(t *testing.T) {
 	runExpect(t, `
-		@comp repeat($value, $from, $to)
+		@comp r($value, $from, $to)
 			@if $from < $to
-				#{$value}
-				+repeat($value, $from+1, $to)
+				#{=$value}
+				+__callee__($value, $from+1, $to)
 
-		+repeat("a", 0, 3)`, `aaa`, nil)
+		@main
+			+r("a", 0, 3)`, `aaa`, nil)
 
 	runExpect(t, `
 		~ d := {}
 		@comp m(v)
-			#{v}
-		+m(1)
-		~ d.m = $comps.m
-		+d.m(2)`, `12`, nil)
+			#{=v}
+		@main
+			+m(1)
+			~ d.m = m
+			+d.m(2)`, `12`, nil)
 }
 
 func Test_Comp_NoArguments(t *testing.T) {
@@ -186,7 +189,8 @@ func Test_Comp_NoArguments(t *testing.T) {
 		@comp a()
 			p Testing
 
-		+a()`, `<p>Testing</p>`, nil)
+		@main
+			+a()`, `<p>Testing</p>`, nil)
 }
 
 func Test_Comp_MultiArguments(t *testing.T) {
@@ -194,7 +198,8 @@ func Test_Comp_MultiArguments(t *testing.T) {
 		@comp a($a, $b, $c, $d)
 			p #{$a} #{$b} #{$c} #{$d}
 
-		+a("a", "b", "c", A)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
+		@main
+			+a("a", "b", "c", 2)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
 }
 
 func Test_Comp_NameWithDashes(t *testing.T) {
@@ -202,17 +207,16 @@ func Test_Comp_NameWithDashes(t *testing.T) {
 		@comp i-am-mixin($a, $b, $c, $d)
 			p #{$a} #{$b} #{$c} #{$d}
 
-		+i-am-mixin("a", "b", "c", A)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
+		@main
+			+i-am-mixin("a", "b", "c", 2)`, `<p>a b c 2</p>`, map[string]any{"A": 2})
 }
 
 func Test_Comp_Unknown(t *testing.T) {
 	_, err := run(`
-		@comp foo($a)
-			p #{$a}
+		@main
+			+bar(1)`, nil)
 
-		+bar(1)`, nil)
-
-	expected := `NotCallableError: nil`
+	expected := `unresolved reference "bar"`
 	if err == nil {
 		t.Fatalf(`Expected {%s} error.`, expected)
 	} else if !strings.Contains(err.Error(), expected) {
@@ -222,10 +226,11 @@ func Test_Comp_Unknown(t *testing.T) {
 
 func Test_Comp_NotEnoughArguments(t *testing.T) {
 	_, err := run(`
-		mixin foo($a)
+		@comp foo($a)
 			p #{$a}
 
-		+foo()`, nil)
+		@main
+			+foo()`, nil)
 
 	expected := `WrongNumberOfArgumentsError: want=1 got=0`
 	if err == nil {
@@ -237,10 +242,11 @@ func Test_Comp_NotEnoughArguments(t *testing.T) {
 
 func Test_Comp_TooManyArguments(t *testing.T) {
 	_, err := run(`
-		mixin foo($a)
+		@comp foo($a)
 			p #{$a}
 
-		+foo("a", "b")`, nil)
+		@main
+			+foo("a", "b")`, nil)
 
 	expected := `WrongNumberOfArgumentsError: want=1 got=2`
 	if err == nil {
@@ -251,10 +257,18 @@ func Test_Comp_TooManyArguments(t *testing.T) {
 }
 
 func Test_ClassName(t *testing.T) {
-	runExpect(t, `div.test
-						p.test1.test2
-							[class=$]
-							.test3`, `<div class="test"><p class="test1 test2 test4 test3"></p></div>`,
+	runExpect(t, `
+	@comp x(cls)
+		div.test
+			p.c1.c2
+				[class=["c3", cls, [false="c6"], [true="c7"]]]
+				[class=[false="c8"], class=[true="c9"]]
+				[class=[false=["c10", "c11"]], class=[true=["c12", "c13"]]]
+				[class=[(1 > 0)=["c14", "c15"]], class=[(2+1 == 3)=["c16", "c17"]]]
+				.c4
+	@main
+		+x("c5")
+`, `<div class="test"><p class="c1 c2 c3 c5 c7 c9 c12 c13 c14 c15 c16 c17 c4"></p></div>`,
 		"test4")
 }
 
@@ -273,20 +287,29 @@ func Test_Switch(t *testing.T) {
 	runExpect(t, `
 @switch a
 	@case 1
-		v1
+		| v1
 	@case 2
-		v2
+		| v2
 	@default
-		v0
-`, `<input size="30" type="text" />`, map[string]any{"a": 1})
+		| v0:#{a}
+`, `v1`, map[string]any{"a": 1})
 }
 
 func Test_Attribute(t *testing.T) {
-	runExpect(t, `a.btn[href="link",class=true?"btn-primary":"btn-outline-primary"]`, `<a class="btn btn-primary" href="link"></a>`, nil)
-	runExpect(t, "input[type=`text`][name=\"\"][size=30]", `<input size="30" type="text" />`, nil)
-	runExpect(t, "input[type=`text`][name][size=30]", `<input name size="30" type="text" />`, nil)
-	runExpect(t, "input[type=`text`,name,size=30]", `<input name size="30" type="text" />`, nil)
-	runExpect(t, "input[type=`text`,name=``,size=30]", `<input size="30" type="text" />`, nil)
+	runExpect(t, `hr[[b=1], [(false)=[c=2]], [(true)=[c=3]]]`, `<hr b="1" c="3" />`, nil)
+	runExpect(t, `hr[[b=1], [(false)=(;c=2,d=3)], [(true)=(;c=3,d=5)]]`, `<hr b="1" c="3" d="5" />`, nil)
+	runExpect(t, `hr[[b=1], [(3-2 == 1)=(;c=3,d=5)]]`, `<hr b="1" c="3" d="5" />`, nil)
+	runExpect(t, `hr[[b=1], [(3-2 == 2)=(;c=3,d=5)]]`, `<hr b="1" />`, nil)
+	runExpect(t, `hr[[b=2]]`, `<hr b="2" />`, nil)
+	runExpect(t, "input[readonly]", `<input readonly />`, nil)
+	runExpect(t, "input[readonly=false]", `<input />`, nil)
+	runExpect(t, "input[type=`text`][name][size=30]", `<input type="text" name size="30" />`, nil)
+	runExpect(t, "input[type=`text`][name=0][size=30]", `<input type="text" size="30" />`, nil)
+	runExpect(t, "input[type=`text`]\n\t[name]", `<input type="text" name />`, nil)
+	runExpect(t, `a.btn[href="link",class=true?"btn-primary":"btn-outline-primary"]`, `<a href="link" class="btn btn-primary"></a>`, nil)
+	runExpect(t, "input[type=`text`][name=\"\"][size=30]", `<input type="text" size="30" />`, nil)
+	runExpect(t, "input[type=`text`,name,size=30]", `<input type="text" name size="30" />`, nil)
+	runExpect(t, "input[type=`text`,name=``,size=30]", `<input type="text" size="30" />`, nil)
 	runExpect(t, "div[name=`Te>st`]",
 		`<div name="Te>st"></div>`,
 		nil)
@@ -296,30 +319,8 @@ func Test_Attribute(t *testing.T) {
 	runExpect(t, `div[name="Test"]["@foo.bar"="baz"].testclass
 						p
 							[style="text-align: center; color: maroon"]`,
-		`<div @foo.bar="baz" class="testclass" name="Test">`+
-			`<p style="text-align: center; color: maroon"></p></div>`,
+		"<div name=\"Test\" @foo.bar=\"baz\" class=\"testclass\"><p style=\"text-align: center; color: maroon\"></p></div>",
 		nil)
-}
-
-func Test_AttributeCondition(t *testing.T) {
-	runExpectError(t, `
-button
-	.active ? $index / : ""
-`, "error: parse tag 'button' attribute 'class' condition '$index / : \"\"' failed: Parse Error: expected operand, found ':'\n\tat -:1:17", nil)
-}
-
-func Test_MultipleClasses(t *testing.T) {
-	res, err := run(`div.test1.test2[class="test3"][class="test4"]`, nil)
-
-	if err != nil {
-		t.Fatal(err.Error())
-	} else {
-		expect(res, `<div class="test1 test2 test3 test4"></div>`, t)
-	}
-}
-
-func Test_EmptyAttribute(t *testing.T) {
-	runExpect(t, `div[name]`, `<div name></div>`, nil)
 }
 
 func Test_RawText(t *testing.T) {
@@ -453,15 +454,19 @@ type runOpts struct {
 
 func runExpect(t *testing.T, tpl, expected string, data any, opt ...runOption) {
 	t.Helper()
-	tmpl, res, err := runt(tpl, data, opt...)
+	code, _, res, err := runt(tpl, data, opt...)
 	printSource := func() {
-		if tmpl == nil {
+		if len(code) == 0 {
 			return
 		}
 		fmt.Fprint(os.Stderr, "\n\n%%%%%%%%%%%% BEGIN SOURCE CODE %%%%%%%%%%%%\n")
-		lines := strings.Split(tmpl.Source(), "\n")
+		lines := strings.Split(code, "\n")
 		for i, line := range lines {
-			fmt.Fprintf(os.Stderr, "%04d | %s\n", i+1, line)
+			is := strconv.Itoa(i + 1)
+			if diff := 5 - len(is); diff > 0 {
+				is = strings.Repeat(" ", diff) + is
+			}
+			fmt.Fprintf(os.Stderr, "%s | %s\n", is, line)
 		}
 		fmt.Fprint(os.Stderr, "%%%%%%%%%%%% END SOURCE CODE %%%%%%%%%%%%\n")
 	}
@@ -498,7 +503,7 @@ func runExpect(t *testing.T, tpl, expected string, data any, opt ...runOption) {
 
 func runExpectError(t *testing.T, tpl, expectedError string, data any, opt ...runOption) {
 	t.Helper()
-	_, _, err := runt(tpl, data, opt...)
+	_, _, _, err := runt(tpl, data, opt...)
 
 	if err == nil {
 		t.Fatalf("expected error, but got nil")
@@ -521,7 +526,7 @@ func runExpectError(t *testing.T, tpl, expectedError string, data any, opt ...ru
 
 func runExpectErrorTrace(t *testing.T, tpl, expectedError string, trace string, h gad.ErrorHumanizing, opt ...runOption) {
 	t.Helper()
-	_, _, err := runt(tpl, nil, opt...)
+	_, _, _, err := runt(tpl, nil, opt...)
 
 	if err == nil {
 		t.Fatalf("expected error, but got nil")
@@ -541,7 +546,7 @@ func runExpectErrorTrace(t *testing.T, tpl, expectedError string, trace string, 
 }
 
 func run(tpl string, data any) (string, error) {
-	_, ret, err := runt(tpl, data)
+	_, _, ret, err := runt(tpl, data)
 	return ret, err
 }
 
@@ -554,7 +559,7 @@ func (e *ModuleCompileError) Error() string {
 	return fmt.Sprintf("compiling module %q: %v", e.module, e.err)
 }
 
-func runt(tpl string, data any, opt ...runOption) (t *Template, res string, err error) {
+func runt(tpl string, data any, opt ...runOption) (code string, t *Template, res string, err error) {
 	var (
 		globalNames []string
 		dataDict    map[string]any
@@ -610,6 +615,8 @@ func runt(tpl string, data any, opt ...runOption) (t *Template, res string, err 
 		return
 	}
 
+	code = out.String()
+
 	modules := make(map[string]string)
 
 	if opts.modules != nil {
@@ -624,19 +631,23 @@ func runt(tpl string, data any, opt ...runOption) (t *Template, res string, err 
 		}
 	}
 
-	if t, err = NewTemplateBuilder(out.Bytes()).WithHandleOptions(func(co *gad.CompileOptions) {
-		for k, v := range modules {
-			co.CompilerOptions.ModuleMap.AddSourceModule(k, []byte(v))
-		}
-		if opts.compileOptionsHandle != nil {
-			opts.compileOptionsHandle(co)
-		}
-	}).Build(); err != nil {
+	if t, err = NewTemplateBuilder(out.Bytes()).
+		WithHandleOptions(func(co *gad.CompileOptions) {
+			for k, v := range modules {
+				co.CompilerOptions.ModuleMap.AddSourceModule(k, []byte(v))
+			}
+			if opts.compileOptionsHandle != nil {
+				opts.compileOptionsHandle(co)
+			}
+		}).Build(); err != nil {
 		return
 	}
 
 	var buf bytes.Buffer
-	if _, err = t.Executor().Out(&buf).ExecuteModule(); err != nil {
+	if _, err = t.Executor().
+		Out(&buf).
+		Global(dataDict).
+		ExecuteModule(); err != nil {
 		return
 	}
 

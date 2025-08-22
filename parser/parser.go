@@ -214,9 +214,9 @@ func (p *Parser) parseBlock(parent Node) *Block {
 				case tokClassName:
 					tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "class", attr.Value, true, false, cond, nil})
 				case tokAttribute:
-					var elements []*node.KeyValueLit
+					var elements *node.KeyValueArrayLit
 					if attr.AnyValue != nil {
-						elements = attr.AnyValue.([]*node.KeyValueLit)
+						elements = attr.AnyValue.(*node.KeyValueArrayLit)
 					}
 					tag.Attributes = append(tag.Attributes, Attribute{p.pos(), attr.Value, attr.Data["Content"], attr.Data["Mode"] == "raw", false, cond, elements})
 				}
@@ -239,9 +239,9 @@ func (p *Parser) parseBlock(parent Node) *Block {
 						case tokClassName:
 							tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "class", attr.Value, true, false, expr, nil})
 						case tokAttribute:
-							var elements []*node.KeyValueLit
+							var elements *node.KeyValueArrayLit
 							if attr.AnyValue != nil {
-								elements = attr.AnyValue.([]*node.KeyValueLit)
+								elements = attr.AnyValue.(*node.KeyValueArrayLit)
 							}
 							tag.Attributes = append(tag.Attributes, Attribute{p.pos(), attr.Value, attr.Data["Content"], attr.Data["Mode"] == "raw", false, expr, elements})
 						}
@@ -494,9 +494,9 @@ readmore:
 			panic("Conditional attributes must be placed in a block within a tag.")
 		}
 
-		var elements []*node.KeyValueLit
+		var elements *node.KeyValueArrayLit
 		if attr.AnyValue != nil {
-			elements = attr.AnyValue.([]*node.KeyValueLit)
+			elements = attr.AnyValue.(*node.KeyValueArrayLit)
 		}
 		tag.Attributes = append(tag.Attributes, Attribute{p.pos(), attr.Value, attr.Data["Content"], attr.Data["Mode"] == "raw", attr.Data["Flag"] == "true", "", elements})
 		goto readmore

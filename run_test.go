@@ -86,7 +86,7 @@ func Test_RunPrintLines(t *testing.T) {
 	runExpect(t, compPrintLines+`
 @main
 	+print_lines(["a", "b", "c", "d"])
-		@slot #line(_, i, line)
+		@slot #line(i, line)
 			| line #{=str(i,"\n")}
 		
 `, `line 0
@@ -100,7 +100,8 @@ line 3`, nil)
 		@slot #( "line[1]" )(super, i, line)
 			| line 1 #{= "\n"}
 		@slot #( "line[3]" )(super, i, line)
-			| line 3 @ #{ super(i,line) }
+			| line 3 @ 
+			~ super(i,line)
 		
 `, `0: a
 line 1 
@@ -135,7 +136,7 @@ func Test_RunTableComp(t *testing.T) {
 			@for row in rows
 				tr
 					@for cel in row
-						td {%= cel %}
+						td #{= cel }
 @main
 	+table([[1,2]])
 `, `<tbody><tr><td>1</td><td>2</td></tr></tbody>`, nil)
@@ -154,10 +155,11 @@ func Test_RunCompOverrideMainSlot(t *testing.T) {
 	runExpect(t, `
 @comp message()
 	@slot main
-		| the message
+		| default message
 @main
 	+message()
-		@slot #main(parent)
-			| my msg
-`, `my msg`, nil)
+		@slot #main(;$super)
+			| my msg - 
+			~ $super()
+`, `my msg - default message`, nil)
 }

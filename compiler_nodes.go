@@ -415,7 +415,7 @@ func (c *Compiler) visitSlotDef(slot *parser.Slot) {
 
 func (c *Compiler) visitSlot(slot *parser.Slot) {
 	localName := "$slot$" + slot.ID
-	slot.Scope.NamedArgs.Add(node.ETypedIdent(node.EIdent("default_slot", 0)), node.EIdent(localName+"$", 0))
+	slot.Scope.NamedArgs.Add(node.ETypedIdent(node.EIdent("$super", 0)), node.EIdent(localName+"$", 0))
 	call := slot.Scope.Caller().String()
 	c.write(`{% ` + localName + call + ` %}`)
 }

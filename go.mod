@@ -3,7 +3,7 @@ module github.com/gad-lang/giom
 go 1.23.3
 
 require (
-	github.com/gad-lang/gad v0.0.0-20251107191523-0cd29148e932
+	github.com/gad-lang/gad v0.0.0-20251113173117-4ee9d06f264b
 	github.com/stretchr/testify v1.10.0
 )
 

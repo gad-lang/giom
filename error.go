@@ -14,7 +14,8 @@ func HumanizeError(out io.Writer, err error) {
 	case *gad.RuntimeError:
 		fmt.Fprintf(out, "%+v\n", t)
 		if st := t.StackTrace(); len(st) > 0 {
-			t.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(out, 20, 20)
+			pos := t.FileSet().Position(source.Pos(st[len(st)-1].Offset))
+			pos.File.Data.TraceLines(out, pos.Line, pos.Column, 20, 20)
 		}
 	case *parser.ErrorList, *gad.CompilerError:
 		fmt.Fprintf(out, "%+20.20v\n", t)

@@ -12,13 +12,13 @@ func Test_RunErrorTrace(t *testing.T) {
 	+b()
 `, ``, `Compile Error: unresolved reference "b"
 	at (main):5:3
-	    3| const main = func($slots={}) {
-	    4| 	{
-	    5| 		b()
-	       		^
-	    6| 	}
-	    7| }
-	    8| return {main: main}
+         3| const main = func($slots={}) {
+         4| 	{
+       🠆 5| 		b()
+            		^
+         6| 	}
+         7| }
+         8| return {main: main}
 `,
 		gad.ErrorHumanizing{},
 	)
@@ -34,12 +34,12 @@ func Test_RunErrorTrace2(t *testing.T) {
 	   alerts:1:2
 
 (main):3:1:
-	    3| import("alerts")
-	       ^
+       🠆 3| import("alerts")
+            ^
 alerts:1:2:
-	    1| (1 / 0)
-	        ^
-	    2| return {}`,
+       🠆 1| (1 / 0)
+             ^
+         2| return {}`,
 		gad.ErrorHumanizing{},
 		withModule("alerts", `
 ~ 1/0

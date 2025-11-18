@@ -17,5 +17,5 @@ func (t *Template) Executor() *TemplateExecutor {
 }
 
 func (t *Template) Source() string {
-	return string(t.BC.FileSet.File(1).Data)
+	return t.BC.FileSet.File(1).Data.ToString()
 }

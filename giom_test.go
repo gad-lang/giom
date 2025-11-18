@@ -476,7 +476,8 @@ func runExpect(t *testing.T, tpl, expected string, data any, opt ...runOption) {
 		case *gad.RuntimeError:
 			fmt.Fprintf(os.Stderr, "%+v\n", et)
 			if st := et.StackTrace(); len(st) > 0 {
-				et.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(os.Stderr, 3, 3)
+				pos := et.FileSet().Position(source.Pos(st[len(st)-1].Offset))
+				pos.File.Data.TraceLines(os.Stderr, pos.Line, pos.Column, 3, 3)
 			}
 			printSource()
 			t.Fatal(err.Error())
@@ -515,7 +516,8 @@ func runExpectError(t *testing.T, tpl, expectedError string, data any, opt ...ru
 	case *gad.RuntimeError:
 		fmt.Fprintf(os.Stderr, "%+v\n", t)
 		if st := t.StackTrace(); len(st) > 0 {
-			t.FileSet().Position(source.Pos(st[len(st)-1].Offset)).TraceLines(os.Stderr, 20, 20)
+			pos := t.FileSet().Position(source.Pos(st[len(st)-1].Offset))
+			pos.File.Data.TraceLines(os.Stderr, pos.Line, pos.Column, 20, 20)
 		}
 	case *parser.ErrorList, *gad.CompilerError:
 		fmt.Fprintf(os.Stderr, "%+20.20v\n", t)

@@ -9,6 +9,8 @@ import (
 	"github.com/gad-lang/gad/parser/source"
 )
 
+// HumanizeError writes a human-readable error trace to out for the given error,
+// handling GAD runtime errors, compiler errors, and parse errors.
 func HumanizeError(out io.Writer, err error) {
 	switch t := err.(type) {
 	case *gad.RuntimeError:

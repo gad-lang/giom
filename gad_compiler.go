@@ -10,19 +10,24 @@ import (
 	"github.com/gad-lang/gad/parser/node"
 )
 
+// FormatFlag controls formatting behavior for GAD code output.
 type FormatFlag uint
 
 const (
+	// Format enables basic code formatting.
 	Format FormatFlag = iota + 1
+	// FormatTranspile enables formatting with GAD transpilation.
 	FormatTranspile
 )
 
+// ToGadCompiler compiles giom AST nodes into GAD source code.
 type ToGadCompiler struct {
 	c       *Compiler
 	preCode string
 	format  FormatFlag
 }
 
+// NewToGadCompiler creates a new ToGadCompiler for the given Compiler.
 func NewToGadCompiler(c *Compiler) *ToGadCompiler {
 	return &ToGadCompiler{c: c}
 }

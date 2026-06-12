@@ -7,6 +7,7 @@ import (
 	"reflect"
 )
 
+// FuncMap provides runtime helper functions for giom templates compiled to Go html/template.
 var FuncMap = template.FuncMap{
 	"__giom_add":   runtime_add,
 	"__giom_sub":   runtime_sub,

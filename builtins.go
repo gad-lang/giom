@@ -299,6 +299,8 @@ var (
 	}
 )
 
+// AppendBuiltins registers giom built-in functions (escape, attr, attrs, write)
+// into the given Builtins and returns it.
 func AppendBuiltins(b *gad.Builtins) *gad.Builtins {
 	b.Set(BuiltinEscape.FuncName, BuiltinEscape)
 	b.Set(BuiltinAttr.FuncName, BuiltinAttr)

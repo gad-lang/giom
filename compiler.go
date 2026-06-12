@@ -9,20 +9,10 @@ import (
 )
 
 // Compiler is the main interface of giom Template Engine.
-// In order to use an giom template, it is required to create a Compiler and
-// compile an giom source to native Go template.
+// It parses giom source and compiles it to GAD code.
 //
-//	compiler := giom.New()
-//	// Parse the input file
-//	err := compiler.ParseFile("./input.giom")
-//	if err == nil {
-//		// Compile input file to Go template
-//		tpl, err := compiler.Compile()
-//		if err == nil {
-//			// Check built in html/template documentation for further details
-//			tpl.Execute(os.Stdout, somedata)
-//		}
-//	}
+//	compiler := giom.New(root)
+//	err := compiler.Compile(&out)
 type Compiler struct {
 	// Compiler options
 	Options
@@ -60,8 +50,10 @@ type Options struct {
 	// In this form, giom emits line number comments in the output template. It is usable in debugging environments.
 	// Default: false
 	LineNumbers bool
-	PreCode     string
-	FileName    string
+	// PreCode is GAD source code prepended to the compiled output.
+	PreCode string
+	// FileName is the source file name used in error traces.
+	FileName string
 }
 
 // DirOptions is used to provide options to directory compilation.
@@ -117,9 +109,7 @@ func CompileToGad(out io.Writer, input []byte, options Options) (err error) {
 	return
 }
 
-// Compile compiles giom and writes the Go Template source into given io.Writer instance.
-// You would not be using this unless debugging / checking the output. Please use Compile
-// method to obtain a template instance directly.
+// Compile compiles the giom AST and writes GAD source code into the given io.Writer.
 func (c *Compiler) Compile(out io.Writer) (err error) {
 	c.writer = &writer{Writer: out}
 	c.visited = map[uintptr]any{}

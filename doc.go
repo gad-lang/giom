@@ -97,9 +97,9 @@ executed with following JSON data:
 	    "Friends": 17
 	}
 
-It is possible to interpolate fields using `${}`
+It is possible to interpolate fields using `#{}`
 
-	p Welcome ${Name}!
+	p Welcome #{Name}!
 
 would print
 
@@ -117,11 +117,11 @@ would print
 
 giom can expand basic expressions. For example, it is possible to concatenate strings with + operator:
 
-	p Welcome ${Name + " " + LastName}
+	p Welcome #{Name + " " + LastName}
 
 Arithmetic expressions are also supported:
 
-	p You need ${50 - Friends} more friends to reach 50!
+	p You need #{50 - Friends} more friends to reach 50!
 
 Expressions can be used within attributes
 
@@ -134,7 +134,7 @@ all variables must start with a $ character and can be assigned as in the follow
 
 	div
 	    $fullname = Name + " " + LastName
-	    p Welcome ${$fullname}
+	    p Welcome #{$fullname}
 
 If you need to access the supplied data itself (i.e. the object containing Name, LastName etc fields.) you can use `$` variable
 
@@ -175,7 +175,7 @@ perfectly fine to use the same method for other types of attributes:
 It is possible to iterate over arrays and maps using `each`:
 
 	each $repo in Repositories
-	    p ${$repo}
+	    p #{$repo}
 
 would print
 
@@ -189,9 +189,9 @@ It is also possible to iterate over values and indexes at the same time
 	        .even ? $i % 2 == 0
 	        .odd ? $i % 2 == 1
 
-# Includes
+# Imports
 
-A template can include other templates using `include`:
+A template can import other templates using `import`:
 
 	a.giom
 	    p this is template a
@@ -201,8 +201,8 @@ A template can include other templates using `include`:
 
 	c.giom
 	    div
-	        include a
-	        include b
+	        import a
+	        import b
 
 gets compiled to
 

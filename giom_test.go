@@ -22,16 +22,24 @@ func Test_Doctype(t *testing.T) {
 func Test_Export(t *testing.T) {
 	compileExpect(t, `
 @comp Alert()
-	div`, `const Alert = func($slots={}) {
+	div`,
+		`const Alert = func(; $slots={}) {
 	write(rawstr("<div></div>";cast))
-
+	
 }
-return {}`)
 
-	compileExpect(t, `@export X`, `return {X: X}`)
-	compileExpect(t, `@export X = 2`, `return {X: 2}`)
+export {}
+
+return @module`)
+
+	compileExpect(t, `@export X`, `export { X: X }
+
+return @module`)
+	compileExpect(t, `@export X = 2`, `export { X: 2 }
+
+return @module`)
 	compileExpect(t, `~ x := 100
-@export Y = x`, "x := 100\nreturn {Y: x}")
+@export Y = x`, "x := 100\n\nexport { Y: x }\n\nreturn @module")
 }
 
 func Test_Each(t *testing.T) {
@@ -40,8 +48,22 @@ func Test_Each(t *testing.T) {
 		tpl    string
 		expect string
 	}{
-		{"", "@for $a, $b in values\n\t#{=$a}", "for $a, $b in values {\n\tgiom$write($a)\n}\nreturn {}"},
-		{"", "@for $a, $b in values\n\t#{=$a}\n@else\n\t| no values\n", "for $a, $b in values {\n\tgiom$write($a)\n} else {\n\tgiom$write(\"no values\")\n}\nreturn {}"},
+		{"", "@for $a, $b in values\n\t#{=$a}", `for $a, $b in values {
+	giom$write($a	)
+}
+
+export {}
+
+return @module`},
+		{"", "@for $a, $b in values\n\t#{=$a}\n@else\n\t| no values\n", `for $a, $b in values {
+	giom$write($a	)
+} else {
+	giom$write("no values"	)
+}
+
+export {}
+
+return @module`},
 	}
 
 	for _, tt := range cases {
@@ -124,8 +146,8 @@ func Test_CompSlot(t *testing.T) {
 			nil,
 		},
 		{"", `
-		@comp Alert(title, key="no_key")
-			@slot main(title,key2=key)
+		@comp Alert(title; key="no_key")
+			@slot main(title;key2=key)
 				| default title: #{=title}+#{=key}
 
 		@main
@@ -135,20 +157,20 @@ func Test_CompSlot(t *testing.T) {
 				| no title
 			| #
 			+Alert("T3")
-				@slot #main(title, key2=nil)
+				@slot #main(title; key2=nil)
 					| user title: #{=title}@#{=key2}
 			| #
-			+Alert("T1",key="xxx")
+			+Alert("T1";key="xxx")
 			| #
-			+Alert("T2",key="xxx")
+			+Alert("T2";key="xxx")
 				| no title
 			| #
-			+Alert("T3",key="yyy")
-				@slot #main(title, key2=nil)
+			+Alert("T3";key="yyy")
+				@slot #main(title; key2=nil)
 					| user title: #{=title}@#{=key2}
 			| #
-			+Alert("T4",key="zzz")
-				@slot #main(title, key2=nil)
+			+Alert("T4";key="zzz")
+				@slot #main(title; key2=nil)
 					| user title: #{=title}@#{=key2}
 `,
 			"default title: T1+no_key#no title#user title: T3@no_key#default title: T1+xxx#no title#" +
@@ -169,7 +191,7 @@ func Test_Comp_Loop(t *testing.T) {
 		@comp r($value, $from, $to)
 			@if $from < $to
 				#{=$value}
-				+__callee__($value, $from+1, $to)
+				+@fn($value, $from+1, $to)
 
 		@main
 			+r("a", 0, 3)`, `aaa`, nil)
@@ -296,6 +318,9 @@ func Test_Switch(t *testing.T) {
 }
 
 func Test_Attribute(t *testing.T) {
+	runExpect(t, `div[name="Te>st"]`,
+		`<div name="Te>st"></div>`,
+		nil)
 	runExpect(t, `hr[[b=1], [(false)=[c=2]], [(true)=[c=3]]]`, `<hr b="1" c="3" />`, nil)
 	runExpect(t, `hr[[b=1], [(false)=(;c=2,d=3)], [(true)=(;c=3,d=5)]]`, `<hr b="1" c="3" d="5" />`, nil)
 	runExpect(t, `hr[[b=1], [(3-2 == 1)=(;c=3,d=5)]]`, `<hr b="1" c="3" d="5" />`, nil)
@@ -314,7 +339,7 @@ func Test_Attribute(t *testing.T) {
 		`<div name="Te>st"></div>`,
 		nil)
 	runExpect(t, `div[name="Te>st"]`,
-		`<div name="Te&gt;st"></div>`,
+		`<div name="Te>st"></div>`,
 		nil)
 	runExpect(t, `div[name="Test"]["@foo.bar"="baz"].testclass
 						p
@@ -439,6 +464,12 @@ func withModule(name, source string) runOption {
 		return nil
 	}
 }
+func withBuiltins(d gad.Dict) runOption {
+	return func(opts *runOpts) error {
+		opts.builtins = d
+		return nil
+	}
+}
 
 func withCompileOptionsHander(handle func(co *gad.CompileOptions)) runOption {
 	return func(opts *runOpts) error {
@@ -449,6 +480,7 @@ func withCompileOptionsHander(handle func(co *gad.CompileOptions)) runOption {
 
 type runOpts struct {
 	modules              map[string]string
+	builtins             gad.Dict
 	compileOptionsHandle func(co *gad.CompileOptions)
 }
 
@@ -460,6 +492,8 @@ func runExpect(t *testing.T, tpl, expected string, data any, opt ...runOption) {
 			return
 		}
 		fmt.Fprint(os.Stderr, "\n\n%%%%%%%%%%%% BEGIN SOURCE CODE %%%%%%%%%%%%\n")
+		fmt.Fprint(os.Stderr, code+"\n\n")
+
 		lines := strings.Split(code, "\n")
 		for i, line := range lines {
 			is := strconv.Itoa(i + 1)

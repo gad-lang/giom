@@ -125,7 +125,7 @@ func (c *Compiler) Compile(out io.Writer) (err error) {
 	c.visited = map[uintptr]any{}
 	c.visit(c.root)
 
-	c.write("{% return {")
+	c.write("{% export {")
 	var names [][2]string
 	for name, comp := range c.exportedComps {
 		names = append(names, [2]string{name, comp.Name})
@@ -145,6 +145,7 @@ func (c *Compiler) Compile(out io.Writer) (err error) {
 	}
 
 	c.write("} %}")
+	c.write("{% return @module %}")
 	return
 }
 

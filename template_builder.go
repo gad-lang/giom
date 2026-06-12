@@ -48,8 +48,9 @@ func (b *TemplateBuilder) WithHandleOptions(handle func(co *gad.CompileOptions))
 
 func (b *TemplateBuilder) Build() (t *Template, err error) {
 	var (
+		module *gad.ModuleSpec
+
 		ctx       = b.ctx
-		module    = b.module
 		moduleMap = b.moduleMap
 		builtins  = b.builtins
 	)
@@ -68,12 +69,16 @@ func (b *TemplateBuilder) Build() (t *Template, err error) {
 		moduleMap = helper.NewModuleMap()
 	}
 
+	if b.module != nil {
+		module = &gad.ModuleSpec{ModuleInfo: *b.module}
+	} else {
+		module = &gad.ModuleSpec{ModuleInfo: gad.ModuleInfo{Name: gad.MainName}, Main: true}
+	}
+
 	co := gad.CompileOptions{
 		CompilerOptions: gad.CompilerOptions{
-			Context:     ctx,
-			Module:      module,
-			ModuleMap:   moduleMap,
-			SymbolTable: gad.NewSymbolTable(builtins),
+			Context:   ctx,
+			ModuleMap: moduleMap,
 		},
 		ScannerOptions: gp.ScannerOptions{},
 	}
@@ -82,14 +87,19 @@ func (b *TemplateBuilder) Build() (t *Template, err error) {
 		b.handleOptions(&co)
 	}
 
-	var bc *gad.Bytecode
-	if bc, err = gad.Compile(b.input, co); err != nil {
+	var (
+		bc              *gad.Bytecode
+		buildedBuiltins = builtins.Build()
+		st              = gad.NewSymbolTable(buildedBuiltins.Builtins().NameSet)
+	)
+
+	if _, bc, err = gad.CompileModule(st, module, b.input, co); err != nil {
 		return
 	}
 
 	t = &Template{
 		BC:       bc,
-		Builtins: builtins,
+		Builtins: buildedBuiltins,
 	}
 	return
 }

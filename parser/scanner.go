@@ -709,7 +709,7 @@ func (s *scanner) scanDefault() *token {
 	return nil
 }
 
-var rgxCompCall = regexp.MustCompile(`^\+([A-Za-z_-]+[.\w]*)(\((.*)\)\s*(~?))?$`)
+var rgxCompCall = regexp.MustCompile(`^\+([@\$A-Za-z_-]+[.\w]*)(\((.*)\)\s*(~?))?$`)
 
 func (s *scanner) scanCompCall() *token {
 	if sm := rgxCompCall.FindStringSubmatch(s.buffer); len(sm) != 0 {

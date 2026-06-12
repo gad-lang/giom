@@ -11,14 +11,13 @@ func Test_RunErrorTrace(t *testing.T) {
 @main
 	+b()
 `, ``, `Compile Error: unresolved reference "b"
-	at (main):5:3
-         3| const main = func($slots={}) {
-         4| 	{
-       🠆 5| 		b()
+	at (main):8:3
+         6| const main = func(; $slots={}) {
+         7| 	{
+       🠆 8| 		b()
             		^
-         6| 	}
-         7| }
-         8| return {main: main}
+         9| 	}
+        10| }
 `,
 		gad.ErrorHumanizing{},
 	)
@@ -29,17 +28,18 @@ func Test_RunErrorTrace2(t *testing.T) {
 ~ import("alerts")
 @main
 	div
-`, ``, `ZeroDivisionError: 
-	at (main):3:1
-	   alerts:1:2
+`, ``, `ErrCall: ‹builtinFunction: @binaryOperator›; caused by: ‹ZeroDivisionError›
+	at (main):6:7
+	   alerts:1:1
 
-(main):3:1:
-       🠆 3| import("alerts")
+(main):6:7:
+       🠆 6| import("alerts")
+                  ^
+alerts:1:1:
+       🠆 1| 1 / 0
             ^
-alerts:1:2:
-       🠆 1| (1 / 0)
-             ^
-         2| return {}`,
+         2| export {}
+         4| return @module`,
 		gad.ErrorHumanizing{},
 		withModule("alerts", `
 ~ 1/0
@@ -57,20 +57,29 @@ func Test_RunDualExportedComp(t *testing.T) {
 
 @main
 	+b()
-`, `const a = func($slots={}) {
-	giom$write("a")
-}
-const b = func($slots={}) {
-	{
-		a()
+`, `const (
+	a = func(; $slots={}) {
+		giom$write("a"		)
 	}
-}
-const main = func($slots={}) {
-	{
-		b()
+	b = func(; $slots={}) {
+		{
+			a()
+		}
 	}
+	main = func(; $slots={}) {
+		{
+			b()
+		}
+	}
+)
+
+export {
+	a: a,
+	b: b,
+	main: main
 }
-return {a: a, b: b, main: main}`)
+
+return @module`)
 }
 
 func Test_RunPrintLines(t *testing.T) {

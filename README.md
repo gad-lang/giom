@@ -1,15 +1,13 @@
-# giom [![GoDoc](https://godoc.org/github.com/gad-lang/giom?status.svg)](http://godoc.org/github.com/gad-lang/giom) [![Build Status](https://travis-ci.org/gad-lang/giom.svg?branch=main)](https://travis-ci.org/gad-lang/giom)
+# giom
 
-## Notice
-> While giom is perfectly fine and stable to use, I've been working on a direct Pug.js port for Go. It is somewhat hacky at the moment but take a look at [Pug.go](https://github.com/eknkc/pug) if you are looking for a [Pug.js](https://github.com/pugjs/pug) compatible Go template engine.
+giom is an elegant templating engine for Go, inspired by HAML and Jade/Pug.
+It compiles templates to [GAD](https://github.com/gad-lang/gad) (a Go-based scripting language) bytecode.
 
 ### Usage
+
 ```go
 import "github.com/gad-lang/giom"
 ```
-
-giom is an elegant templating engine for Go Programming Language
-It is inspired from HAML and Jade
 
 ### Tags
 
@@ -114,9 +112,9 @@ executed with following JSON data:
 }
 ```
 
-It is possible to interpolate fields using `${}`
+It is possible to interpolate fields using `#{}`
 
-    p Welcome ${Name}!
+    p Welcome #{Name}!
 
 would print
 
@@ -138,11 +136,11 @@ would print
 
 giom can expand basic expressions. For example, it is possible to concatenate strings with + operator:
 
-    p Welcome ${Name + " " + LastName}
+    p Welcome #{Name + " " + LastName}
 
 Arithmetic expressions are also supported:
 
-    p You need ${50 - Friends} more friends to reach 50!
+    p You need #{50 - Friends} more friends to reach 50!
 
 Expressions can be used within attributes
 
@@ -155,7 +153,7 @@ all variables must start with a $ character and can be assigned as in the follow
 
     div
         $fullname = Name + " " + LastName
-        p Welcome ${$fullname}
+        p Welcome #{$fullname}
 
 If you need to access the supplied data itself (i.e. the object containing Name, LastName etc fields.) you can use `$` variable
 
@@ -196,7 +194,7 @@ perfectly fine to use the same method for other types of attributes:
 It is possible to iterate over arrays and maps using `each`:
 
     each $repo in Repositories
-        p ${$repo}
+        p #{$repo}
 
 would print
 
@@ -217,7 +215,7 @@ Comps (reusable template blocks that accept arguments) can be defined:
     mixin surprise
         span Surprise!
     mixin link($href, $title, $text)
-        a[href=$href][title=$title] ${$text}
+        a[href=$href][title=$title] #{$text}
 
 and then called multiple times within a template (or even within another mixin definition):
 
@@ -297,146 +295,131 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## Usage
 
-```go
-var DefaultOptions = Options{true, false}
-var DefaultDirOptions = DirOptions{".giom", true}
-```
+### Compile to GAD
 
-#### func  Compile
+Use `CompileToGad` to compile a giom template to GAD source code:
 
 ```go
-func Compile(input string, options Options) (*template.Template, error)
-```
-Parses and compiles the supplied giom template string. Returns corresponding Go
-Template (html/templates) instance. Necessary runtime functions will be injected
-and the template will be ready to be executed.
+import (
+    "bytes"
+    "github.com/gad-lang/giom"
+)
 
-#### func  CompileFile
-
-```go
-func CompileFile(filename string, options Options) (*template.Template, error)
-```
-Parses and compiles the contents of supplied filename. Returns corresponding Go
-Template (html/templates) instance. Necessary runtime functions will be injected
-and the template will be ready to be executed.
-
-#### func  CompileDir
-```go
-func CompileDir(dirname string, dopt DirOptions, opt Options) (map[string]*template.Template, error)
-```
-Parses and compiles the contents of a supplied directory name. Returns a mapping of template name (extension stripped) to corresponding Go Template (html/template) instance. Necessary runtime functions will be injected and the template will be ready to be executed.
-
-If there are templates in subdirectories, its key in the map will be it's path relative to `dirname`. For example:
-```
-templates/
-   |-- index.giom
-   |-- layouts/
-         |-- base.giom
-```
-```go
-templates, err := giom.CompileDir("templates/", giom.DefaultDirOptions, giom.DefaultOptions)
-templates["index"] // index.giom Go Template
-templates["layouts/base"] // base.giom Go Template
-```
-By default, the search will be recursive and will match only files ending in ".giom". If recursive is turned off, it will only search the top level of the directory. Specified extension must start with a period.
-
-#### type Compiler
-
-```go
-type Compiler struct {
-	// Compiler options
-	Options
+func main() {
+    var out bytes.Buffer
+    err := giom.CompileToGad(&out, []byte(`html
+    head
+        title Page Title
+    body
+        div#content
+            p Hello #{name}
+`), giom.Options{})
+    // out.String() contains the compiled GAD source
 }
 ```
 
-Compiler is the main interface of giom Template Engine. In order to use an
-giom template, it is required to create a Compiler and compile an giom source
-to native Go template.
+### Build and Execute
 
-    compiler := giom.New()
-    // Parse the input file
-    err := compiler.ParseFile("./input.giom")
-    if err == nil {
-    	// Compile input file to Go template
-    	tpl, err := compiler.Compile()
-    	if err == nil {
-    		// Check built in html/template documentation for further details
-    		tpl.Execute(os.Stdout, somedata)
-    	}
+Use `TemplateBuilder` to build and execute a compiled template:
+
+```go
+import (
+    "bytes"
+    "github.com/gad-lang/giom"
+)
+
+func main() {
+    var gadBuf bytes.Buffer
+    giom.CompileToGad(&gadBuf, []byte(`
+@comp Greet(name)
+    p Hello #{name}
+
+@main
+    +Greet("World")
+`), giom.Options{})
+
+    t, err := giom.NewTemplateBuilder(gadBuf.Bytes()).Build()
+    if err != nil {
+        panic(err)
     }
 
-#### func  New
-
-```go
-func New() *Compiler
+    var html bytes.Buffer
+    _, err = t.Executor().Out(&html).ExecuteModule()
+    // html.String() == "<p>Hello World</p>"
+}
 ```
-Create and initialize a new Compiler
 
-#### func (*Compiler) Compile
+### Key Types
 
-```go
-func (c *Compiler) Compile() (*template.Template, error)
-```
-Compile giom and create a Go Template (html/templates) instance. Necessary
-runtime functions will be injected and the template will be ready to be
-executed.
-
-#### func (*Compiler) CompileString
-
-```go
-func (c *Compiler) CompileString() (string, error)
-```
-Compile template and return the Go Template source You would not be using this
-unless debugging / checking the output. Please use Compile method to obtain a
-template instance directly.
-
-#### func (*Compiler) CompileWriter
-
-```go
-func (c *Compiler) CompileWriter(out io.Writer) (err error)
-```
-Compile giom and write the Go Template source into given io.Writer instance You
-would not be using this unless debugging / checking the output. Please use
-Compile method to obtain a template instance directly.
-
-#### func (*Compiler) Parse
-
-```go
-func (c *Compiler) Parse(input string) (err error)
-```
-Parse given raw giom template string.
-
-#### func (*Compiler) ParseFile
-
-```go
-func (c *Compiler) ParseFile(filename string) (err error)
-```
-Parse the giom template file in given path
-
-#### type Options
+#### Options
 
 ```go
 type Options struct {
-	// Setting if pretty printing is enabled.
-	// Pretty printing ensures that the output html is properly indented and in human readable form.
-	// If disabled, produced HTML is compact. This might be more suitable in production environments.
-	// Defaukt: true
-	PrettyPrint bool
-	// Setting if line number emitting is enabled
-	// In this form, giom emits line number comments in the output template. It is usable in debugging environments.
-	// Default: false
-	LineNumbers bool
+    PrettyPrint bool   // Pretty print output HTML (default: true)
+    LineNumbers bool   // Emit line number comments (default: false)
+    PreCode     string // Prepended GAD source code
+    FileName    string // Source file name for error traces
 }
 ```
 
-#### type DirOptions
+#### TemplateBuilder
+
+Used to build a `*Template` from compiled GAD bytecode:
 
 ```go
-// Used to provide options to directory compilation
-type DirOptions struct {
-	// File extension to match for compilation
-	Ext string
-	// Whether or not to walk subdirectories
-	Recursive bool
-}
+builder := giom.NewTemplateBuilder(gadSource)
+builder.WithContext(ctx)
+builder.WithModule(module)
+builder.WithModuleMap(moduleMap)
+builder.WithBuiltins(builtins)
+t, err := builder.Build()
+```
+
+#### TemplateExecutor
+
+Executes a `*Template` and writes output:
+
+```go
+executor := t.Executor()
+executor.Out(writer)         // Output writer
+executor.Global(data)        // Global variables map
+executor.Args(args...)       // Positional arguments
+executor.NamedArgs(named)    // Named arguments
+result, err := executor.Execute()
+result, err := executor.ExecuteModule()  // Runs "main" export
+```
+
+### Comps (Components)
+
+Comps are reusable template blocks with arguments:
+
+```
+@comp Greet(name)
+    p Hello #{name}
+
+@main
+    +Greet("World")
+```
+
+### Exports
+
+Comps can be exported to make them accessible from the module result:
+
+```
+@export comp Alert(message)
+    div.alert #{message}
+```
+
+### Slots
+
+Slots allow content injection into comps:
+
+```
+@comp Card
+    @slot main
+        | Default content
+
+@main
+    +Card()
+        | Custom content
 ```

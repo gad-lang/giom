@@ -61,6 +61,7 @@ func (c *ToGadCompiler) Compile(out io.Writer) (err error) {
 		data.Reset()
 		codeOptions := []node.CodeOption{
 			node.CodeWithPrefix("\t"),
+			node.CodeFormat(),
 		}
 
 		if c.format == FormatTranspile {

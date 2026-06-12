@@ -17,6 +17,7 @@ type TemplateExecutor struct {
 	err           io.Writer
 	vmOptsSetuper func(opts *gad.SetupOpts)
 	vmOptsRunner  func(opts *gad.RunOpts)
+	builtins      *gad.StaticBuiltins
 }
 
 func NewTemplateExecutor(t *Template) *TemplateExecutor {
@@ -25,6 +26,7 @@ func NewTemplateExecutor(t *Template) *TemplateExecutor {
 		out:       os.Stdout,
 		err:       os.Stderr,
 		namedArgs: gad.NewNamedArgs(),
+		builtins:  t.Builtins,
 	}
 }
 
@@ -84,7 +86,6 @@ func (e *TemplateExecutor) Execute() (vm *gad.VM, result gad.Object, err error) 
 
 	var (
 		setupOpts = &gad.SetupOpts{
-			Builtins: e.t.Builtins,
 			ToRawStrHandler: func(vm *gad.VM, s gad.Str) gad.RawStr {
 				return gad.RawStr(html.EscapeString(string(s)))
 			},
@@ -97,7 +98,8 @@ func (e *TemplateExecutor) Execute() (vm *gad.VM, result gad.Object, err error) 
 		}
 	)
 
-	vm = gad.NewVM(e.t.BC)
+	vm = gad.NewVM(e.builtins, e.t.BC)
+	vm.Builtins = e.builtins
 
 	if e.vmOptsSetuper != nil {
 		e.vmOptsSetuper(setupOpts)
@@ -126,6 +128,12 @@ func (e *TemplateExecutor) ExecuteModule() (result gad.Object, err error) {
 	if d, ok := module.(gad.Dict); ok {
 		if main, ok := d["main"]; ok {
 			result, err = gad.NewInvoker(vm, main).Invoke(e.args, e.namedArgs)
+		}
+	} else if m, ok := module.(*gad.Module); ok {
+		if d, ok := m.Data.(gad.Dict); ok {
+			if main, ok := d["main"]; ok {
+				result, err = gad.NewInvoker(vm, main).Invoke(e.args, e.namedArgs)
+			}
 		}
 	}
 

@@ -287,7 +287,7 @@ func (c *Compiler) visitTag(tag *parser.Tag) {
 
 func (c *Compiler) visitText(txt *parser.Text) {
 	var (
-		ident = node.EIdent(BuiltinTextWrite.Name, 0)
+		ident = node.EIdent(BuiltinTextWrite.FuncName, 0)
 		nodes []node.Node
 	)
 
@@ -331,7 +331,7 @@ func (c *Compiler) visitText(txt *parser.Text) {
 	}
 
 	c.write("{% ")
-	node.CodeStmtsW(c.writer, stmts)
+	node.CodeW(c.writer, stmts)
 	c.write(" %}")
 }
 

@@ -9,7 +9,7 @@ import (
 
 var (
 	BuiltinEscape = &gad.Function{
-		Name: "giom$escape",
+		FuncName: "giom$escape",
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			if err = call.Args.CheckLen(1); err != nil {
 				return
@@ -83,7 +83,7 @@ var (
 	}
 
 	BuiltinAttr = &gad.Function{
-		Name: "giom$attr",
+		FuncName: "giom$attr",
 		Value: func(call gad.Call) (ret gad.Object, err error) {
 			if err = call.Args.CheckLen(2); err != nil {
 				return
@@ -95,7 +95,7 @@ var (
 	}
 
 	BuiltinAttrs = &gad.Function{
-		Name: "giom$attrs",
+		FuncName: "giom$attrs",
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			var (
 				b      strings.Builder
@@ -292,7 +292,7 @@ var (
 	}
 
 	BuiltinTextWrite = &gad.Function{
-		Name: "giom$write",
+		FuncName: "giom$write",
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			return call.VM.Builtins.Call(gad.BuiltinWrite, call)
 		},
@@ -300,9 +300,9 @@ var (
 )
 
 func AppendBuiltins(b *gad.Builtins) *gad.Builtins {
-	b.Set(BuiltinEscape.Name, BuiltinEscape)
-	b.Set(BuiltinAttr.Name, BuiltinAttr)
-	b.Set(BuiltinAttrs.Name, BuiltinAttrs)
-	b.Set(BuiltinTextWrite.Name, BuiltinTextWrite)
+	b.Set(BuiltinEscape.FuncName, BuiltinEscape)
+	b.Set(BuiltinAttr.FuncName, BuiltinAttr)
+	b.Set(BuiltinAttrs.FuncName, BuiltinAttrs)
+	b.Set(BuiltinTextWrite.FuncName, BuiltinTextWrite)
 	return b
 }

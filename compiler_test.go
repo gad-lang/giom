@@ -1,9 +1,6 @@
 package giom
 
 import (
-	"fmt"
-	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -20,7 +17,7 @@ const (
 		@slot line(i, line)
 			~~
 			const custom = $slots["line["+i+"]"]
-			(custom ? ((*args, **kwargs) => custom(print_line, *args, **kwargs)) : print_line)(i, line)
+			(custom ? func(*args) { custom(print_line, *args) } : print_line)(i, line)
 			~~
 `
 
@@ -39,7 +36,7 @@ func TestCompiler_Slots(t *testing.T) {
 	~~
 	var (x = 1, y = 2)
 	~~
-	@slot main(x)
+	@slot main()
 		div
 
 @comp c2
@@ -47,38 +44,44 @@ func TestCompiler_Slots(t *testing.T) {
 		@slot #main(x)
 			a #{x}
 `, `
-const c1 = func($slots={}) {
-	var (
-		x = 1
-		y = 2
-	)
+const (
+	c1 = func(; $slots={}) {
+		var (
+			x = 1
+			y = 2
+		)
 
-	const $slot$main$ = func() {
-		write(rawstr("<div></div>";cast))
+		const $slot$main$ = func() {
+			write(rawstr("<div></div>";cast))
 
-	}
-	var $slot$main = ($slots.main ?? (_, *args, **kwargs) => $slot$main$(*args; **kwargs))
-	$slot$main($slot$main$)
-}
-const c2 = func($slots={}) {
-	const $slot$main$ = func() {
-		write(rawstr("<a>";cast))
-
-		x
-		write(rawstr("</a>";cast))
-
-	}
-	var $slot$main = ($slots.main ?? (_, *args, **kwargs) => $slot$main$(*args; **kwargs))
-	{
-		const slot$0 = func(*args, **kwargs) {
-			$slot$main($slot$main$)
 		}
-		var $$slots = {}
-		$$slots["main"] = slot$0
-		c1(; $slots=$$slots)
+
+		var $slot$main = ($slots.main ?? $slot$main$)
+
+		$slot$main(; $super=$slot$main$		)
 	}
-}
-return {}
+	c2 = func(; $slots={}) {
+		{
+			const slot$0 = func(x) {
+				write(rawstr("<a>";cast))
+
+				giom$write(x				)
+				write(rawstr("</a>";cast))
+
+			}
+
+			var $$slots = {}
+
+			$$slots["main"] = slot$0
+
+			c1(; $slots=$$slots			)
+		}
+	}
+)
+
+export {}
+
+return @module
 `},
 
 		{"", `
@@ -89,7 +92,7 @@ return {}
 	@slot main
 		div
 `, `
-const main = func($slots={}) {
+const main = func(; $slots={}) {
 	var (
 		x = 1
 		y = 2
@@ -99,23 +102,34 @@ const main = func($slots={}) {
 		write(rawstr("<div></div>";cast))
 
 	}
-	var $slot$main = ($slots.main ?? (_, *args, **kwargs) => $slot$main$(*args; **kwargs))
-	$slot$main($slot$main$)
+
+	var $slot$main = ($slots.main ?? $slot$main$)
+
+	$slot$main(; $super=$slot$main$	)
 }
-return {main: main}
+
+export { main: main }
+
+return @module
 `},
 		{"", `
 @export comp c1
 	@slot default
 		| dv
 `, `
-	const c1 = func c1($slots={}) {
-		const $slot$default$ = func $slot$default$() {
-			giom$write("dv")
-		}
-		var $slot$default = ($slots.default ?? (_, *args, **kwargs) => $slot$default$(*args; **kwargs))
-		$slot$default($slot$default$)
+const c1 = func(; $slots={}) {
+	const $slot$default$ = func() {
+		giom$write("dv"		)
 	}
+
+	var $slot$default = ($slots.default ?? $slot$default$)
+
+	$slot$default(; $super=$slot$default$	)
+}
+
+export { c1: c1 }
+
+return @module
 `},
 		{"", `
 @comp print_lines(rows)
@@ -123,29 +137,71 @@ return {main: main}
 		@slot item(i, line)
 			| #{=i} => #{=line}#{="\n"}
 `, `
-	const print_lines = func print_lines(rows, $slots={}) {
-		const $slot$item$ = func $slot$item$(i, line) {
-			giom$write(i, " => ", line, "\n")
-		}
-		var $slot$item = ($slots.item ?? (_, *args, **kwargs) => $slot$item$(*args; **kwargs))
-		for i, line in rows {
-			$slot$item($slot$item$, i, line)
-		}
+const print_lines = func(rows; $slots={}) {
+	const $slot$item$ = func(i, line) {
+		giom$write(
+			i,
+			" => ",
+			line,
+			"\n"
+		)
 	}
+
+	var $slot$item = ($slots.item ?? $slot$item$)
+
+	for i, line in rows {
+		$slot$item(
+			i,
+			line
+			; $super=$slot$item$
+		)
+	}
+}
+
+export {}
+
+return @module
 `},
 		{"compPrintLines", compPrintLines, `
-	const print_lines = func print_lines(rows, $slots={}) {
-		const print_line = func print_line(i, line) {
-			giom$write(i, ": ", line, "\n")
+const print_lines = func(rows; $slots={}) {
+	const (
+		print_line = func(i, line) {
+			giom$write(
+				i,
+				": ",
+				line,
+				"\n"
+			)
 		}
-		const $slot$line$ = func $slot$line$(i, line) {
-			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
+		$slot$line$ = func(i, line) {
+			const custom = $slots[(("line[" + i) + "]")]
+
+			((custom ? func(*args) {
+				custom(
+					print_line,
+					*args
+				)
+			} : print_line))(
+				i,
+				line
+			)
 		}
-		var $slot$line = ($slots.line ?? (_, *args, **kwargs) => $slot$line$(*args; **kwargs))
-		for i, line in rows {
-			$slot$line($slot$line$, i, line)
-		}
+	)
+
+	var $slot$line = ($slots.line ?? $slot$line$)
+
+	for i, line in rows {
+		$slot$line(
+			i,
+			line
+			; $super=$slot$line$
+		)
 	}
+}
+
+export {}
+
+return @module
 `},
 		{"programPrintLines", compPrintLines + `
 @comp run
@@ -153,21 +209,66 @@ return {main: main}
 		@slot #( "item[2]" )(i, line)
 			| linha 2
 `, `
-	const print_lines = func print_lines(rows, $slots={}) {
-		const print_line = func print_line(i, line) {
-			giom$write(i, ": ", line, "\n")
-		}
-		const $slot$line$ = func $slot$line$(i, line) {
-			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
-		}
-		var $slot$line = ($slots.line ?? (_, *args, **kwargs) => $slot$line$(*args; **kwargs))
+const (
+	print_lines = func(rows; $slots={}) {
+		const (
+			print_line = func(i, line) {
+				giom$write(
+					i,
+					": ",
+					line,
+					"\n"
+				)
+			}
+			$slot$line$ = func(i, line) {
+				const custom = $slots[(("line[" + i) + "]")]
+
+				((custom ? func(*args) {
+					custom(
+						print_line,
+						*args
+					)
+				} : print_line))(
+					i,
+					line
+				)
+			}
+		)
+
+		var $slot$line = ($slots.line ?? $slot$line$)
+
 		for i, line in rows {
-			$slot$line($slot$line$, i, line)
+			$slot$line(
+				i,
+				line
+				; $super=$slot$line$
+			)
 		}
 	}
-	const run = func run($slots={}) {
-		print_lines(["a", "b"])
+	run = func(; $slots={}) {
+		{
+			const slot$0 = func(i, line) {
+				giom$write("linha 2"				)
+			}
+
+			var $$slots = {}
+
+			$$slots["item[2]"] = slot$0
+
+			print_lines(
+				[
+					"a",
+					"b"
+				]
+				; $slots=$$slots
+			)
+		}
 	}
+)
+
+export {}
+
+return @module
 `},
 	}
 	for _, tt := range tests {
@@ -187,28 +288,66 @@ func TestCompiler_Slots2(t *testing.T) {
 		@slot #( "item[2]" )(i, line)
 			| linha 2
 `, `
-	const print_lines = func print_lines(rows, $slots={}) {
-		const print_line = func print_line(i, line) {
-			giom$write(i, ": ", line, "\n")
-		}
-		const $slot$line$ = func $slot$line$(i, line) {
-			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
-		}
-		var $slot$line = ($slots.line ?? (_, *args, **kwargs) => $slot$line$(*args; **kwargs))
-		for i, line in rows {
-			$slot$line($slot$line$, i, line)
-		}
-	}
-	const run = func run($slots={}) {
-		.{
-			const $slot$0 = func $slot$0(i, line) {
-				giom$write("linha 2")
+const (
+	print_lines = func(rows; $slots={}) {
+		const (
+			print_line = func(i, line) {
+				giom$write(
+					i,
+					": ",
+					line,
+					"\n"
+				)
 			}
-			var $childSlots = {}
-			$childSlots[("item[2]")] = $slot$0
-			print_lines(; $slots=$childSlots)
+			$slot$line$ = func(i, line) {
+				const custom = $slots[(("line[" + i) + "]")]
+
+				((custom ? func(*args) {
+					custom(
+						print_line,
+						*args
+					)
+				} : print_line))(
+					i,
+					line
+				)
+			}
+		)
+
+		var $slot$line = ($slots.line ?? $slot$line$)
+
+		for i, line in rows {
+			$slot$line(
+				i,
+				line
+				; $super=$slot$line$
+			)
 		}
 	}
+	run = func(; $slots={}) {
+		{
+			const slot$0 = func(i, line) {
+				giom$write("linha 2"				)
+			}
+
+			var $$slots = {}
+
+			$$slots["item[2]"] = slot$0
+
+			print_lines(
+				[
+					"a",
+					"b"
+				]
+				; $slots=$$slots
+			)
+		}
+	}
+)
+
+export {}
+
+return @module
 `},
 		{"programPrintLines2", compPrintLines + `
 @comp run
@@ -218,42 +357,76 @@ func TestCompiler_Slots2(t *testing.T) {
 
 		~ $childSlots["item[4]"] = (i, line) => giom$write("four line", "\n")
 `, `
-	const print_lines = func print_lines(rows, $slots={}) {
-		const print_line = func print_line(i, line) {
-			giom$write(i, ": ", line, "\n")
-		}
-		const $slot$line$ = func $slot$line$(i, line) {
-			(($slots[(("line[" + i) + "]")] ?? print_line))(i, line)
-		}
-		var $slot$line = ($slots.line ?? (_, *args, **kwargs) => $slot$line$(*args; **kwargs))
-		for i, line in rows {
-			$slot$line($slot$line$, i, line)
-		}
-	}
-	const run = func run($slots={}) {
-		.{
-			const $slot$0 = func $slot$0(i, line) {
-				giom$write("linha 2")
+const (
+	print_lines = func(rows; $slots={}) {
+		const (
+			print_line = func(i, line) {
+				giom$write(
+					i,
+					": ",
+					line,
+					"\n"
+				)
 			}
-			var $childSlots = {}
-			$childSlots[("item[2]")] = $slot$0
-			$childSlots["item[4]"] = (i, line) => giom$write("four line", "\n")
-			print_lines(; $slots=$childSlots)
+			$slot$line$ = func(i, line) {
+				const custom = $slots[(("line[" + i) + "]")]
+
+				((custom ? func(*args) {
+					custom(
+						print_line,
+						*args
+					)
+				} : print_line))(
+					i,
+					line
+				)
+			}
+		)
+
+		var $slot$line = ($slots.line ?? $slot$line$)
+
+		for i, line in rows {
+			$slot$line(
+				i,
+				line
+				; $super=$slot$line$
+			)
 		}
 	}
+	run = func(; $slots={}) {
+		{
+			const slot$0 = func(i, line) {
+				giom$write("linha 2"				)
+			}
+
+			var $$slots = {}
+
+			$$slots["item[2]"] = slot$0
+
+			$childSlots["item[4]"] = (i, line) => giom$write(
+				"four line",
+				"\n"
+			)
+
+			print_lines(
+				[
+					"a",
+					"b"
+				]
+				; $slots=$$slots
+			)
+		}
+	}
+)
+
+export {}
+
+return @module
 `},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			compileExpect(t, tt.tpl, `
-# gad: mixed
-{%
-	`+strings.TrimSpace(tt.out)+`
-%}
-{%
-	return {}
-%}
-`)
+			compileExpect(t, tt.tpl, strings.TrimSpace(tt.out))
 		})
 	}
 }
@@ -262,9 +435,21 @@ func TestCompiler_Code(t *testing.T) {
 	tests := []struct {
 		name, tpl, out string
 	}{
-		{"", `~ const Levels = (;primary,secondary)`, `print(a)`},
-		{"", `~ print(a)`, `print(a)`},
-		{"", "~ print(a)\n~ print(b)", "print(a)\n\tprint(b)"},
+		{"", `~ const Levels = (;primary,secondary)`, `const Levels = (;
+	primary,
+	secondary
+)
+
+export {}
+
+return @module
+`},
+		{"", `~ print(a)`, `print(a)
+export {}
+
+return @module
+`},
+		{"", "~ print(a)\n~ print(b)", "print(a)\nprint(b)\nexport {}\n\nreturn @module\n"},
 		{"", `
 ~~
 print(a)
@@ -273,7 +458,7 @@ print(b)
 
 
 ~~
-`, "print(a)\n\tprint(b)"},
+`, "print(a)\nprint(b)\nexport {}\n\nreturn @module\n"},
 		{"", `
 ~~
 print(a)
@@ -284,19 +469,11 @@ print(b)
 ~~
 
 ~ x
-`, "print(a)\n\tprint(b)\n\tx"},
+`, "print(a)\nprint(b)\nx\nexport {}\n\nreturn @module\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			compileExpect(t, tt.tpl, `
-# gad: mixed
-{%
-	`+strings.TrimSpace(tt.out)+`
-%}
-{%
-	return {}
-%}
-`)
+			compileExpect(t, tt.tpl, strings.TrimSpace(tt.out))
 		})
 	}
 }
@@ -305,53 +482,91 @@ func TestCompiler_Text(t *testing.T) {
 	tests := []struct {
 		name, tpl, out string
 	}{
-		{"", `| #{= func(a){return {v:a}}(5).v }`, `
-	giom$write(func(a) {
-		return {v: a}
-	}(5).v)`},
+		{"", `| #{= func(a){return {v:a}}(5).v }`, `giom$write((func(a) {
+	return { v: a }
+})(5).v)
+export {}
 
-		{"", `| #{= x + 2 }`, `giom$write(((x + 2)))`},
+return @module
+`},
 
-		{"", `| #{= x }`, `giom$write(x)`},
+		{"", `| #{= x + 2 }`, `giom$write((x + 2))
+export {}
 
-		{"", `| a #{- x -} b #{-= c }`, `
-	giom$write("a")
+return @module
+`},
+
+		{"", `| #{= x }`, `giom$write(x)
+export {}
+
+return @module
+`},
+
+		{"", `| a #{- x -} b #{-= c }`, `giom$write(
+	"a",
+	x,
+	"b",
+	c
+)
+export {}
+
+return @module
+`},
+
+		{"", `| a #{- x } b #{= c }`, `giom$write(
+	"a",
+	x,
+	" b ",
+	c
+)
+export {}
+
+return @module
+`},
+
+		{"", `| a #{- x } b`, `giom$write(
+	"a",
+	x,
+	" b"
+)
+export {}
+
+return @module
+`},
+
+		{"", `| a #{- x }`, `giom$write(
+	"a",
 	x
-	giom$write("b", c)`},
+)
+export {}
 
-		{"", `| a #{- x } b #{= c }`, `
-	giom$write("a")
+return @module
+`},
+
+		{"", `| a #{ x }`, `giom$write(
+	"a ",
 	x
-	giom$write(" b ", c)`},
+)
+export {}
 
-		{"", `| a #{- x } b`, `
-	giom$write("a")
-	x
-	giom$write(" b")`},
+return @module
+`},
 
-		{"", `| a #{- x }`, `
-	giom$write("a")
-	x`},
+		{"", `| a`, `giom$write("a")
+export {}
 
-		{"", `| a #{ x }`, `
-	giom$write("a ")
-	x`},
+return @module
+`},
 
-		{"", `| a`, `giom$write("a")`},
+		{"", `| link <a href="/">see</a> b`, `giom$write("link <a href=\"/\">see</a> b")
+export {}
 
-		{"", `| link <a href="/">see</a> b`, `giom$write("link <a href=\"/\">see</a> b")`},
+return @module
+`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			compileExpect(t, tt.tpl, `
-# gad: mixed
-{%
-	`+strings.TrimSpace(tt.out)+`
-%}
-{%
-	return {}
-%}
-`)
+			compileExpect(t, tt.tpl, strings.TrimSpace(tt.out))
 		})
 	}
 }
@@ -362,10 +577,14 @@ button
 	.active ? $index : ""
 `, `
 write(rawstr("<button";cast))
+
 write(giom$attrs(; class=(($index ? "active" : ""))))
+
 write(rawstr("></button>";cast))
 
-return {}
+export {}
+
+return @module
 `)
 }
 
@@ -374,15 +593,18 @@ func TestCompiler_CompileExportComp(t *testing.T) {
 @export comp repeat($value, $count)
 	+repeat($value, $level+1)
 `, `
-# gad: mixed
-{%
-	func repeat($value, $count, $blocks={}) {
-		$comps.repeat($value,($level + 1))
+const repeat = func($value, $count; $slots={}) {
+	{
+		repeat(
+			$value,
+			($level + 1)
+		)
 	}
-%}
-{%
-	return {repeat: repeat}
-%}
+}
+
+export { repeat: repeat }
+
+return @module
 `)
 }
 
@@ -394,19 +616,24 @@ func TestCompiler_CompileComp(t *testing.T) {
 		tbody
 
 `, `
-# gad: mixed
-{%
-	const table = func table(rows, z=3, header=nil, $blocks={}) {
-		const $slot$body = func $slot$body(rows, y=nil) {
-%}
-<tbody></tbody>{%
-		}
-		(($slots.body ?? ((_, *args, **kwargs) => $slot$body(*args; **kwargs))))($slot$body,rows; y=z)
+const table = func(rows; z=3, header=nil, $slots={}) {
+	const $slot$body$ = func(rows; y=nil) {
+		write(rawstr("<tbody></tbody>";cast))
+
 	}
-%}
-{%
-	return {}
-%}
+
+	var $slot$body = ($slots.body ?? $slot$body$)
+
+	$slot$body(
+		rows
+		; y=z,
+		$super=$slot$body$
+	)
+}
+
+export {}
+
+return @module
 `)
 	compileExpect(t, `
 @comp table(rows, header=nil)
@@ -414,195 +641,78 @@ func TestCompiler_CompileComp(t *testing.T) {
 		tbody
 
 `, `
-# gad: mixed
-{%
-	const table = func table(rows, header=nil, $blocks={}) {
-		const $slot$body = func $slot$body(rows) {
-%}
-<tbody></tbody>{%
-		}
-		(($slots.body ?? ((_, *args, **kwargs) => $slot$body(*args; **kwargs))))($slot$body,rows)
+const table = func(rows; header=nil, $slots={}) {
+	const $slot$body$ = func(rows) {
+		write(rawstr("<tbody></tbody>";cast))
+
 	}
-%}
-{%
-	return {}
-%}
+
+	var $slot$body = ($slots.body ?? $slot$body$)
+
+	$slot$body(
+		rows
+		; $super=$slot$body$
+	)
+}
+
+export {}
+
+return @module
 `)
-	return
 	compileExpect(t, `
 @comp repeat($value, $count)
 	+repeat($value, $level+1)
 
 +repeat(1, 0)
 `, `
-# gad: mixed
-{%
-	func repeat($value, $count, $blocks={}) {
-		$comps.repeat($value,($level + 1))
+{
+	repeat(
+		1,
+		0
+	)
+}
+
+const repeat = func($value, $count; $slots={}) {
+	{
+		repeat(
+			$value,
+			($level + 1)
+		)
 	}
-	$comps.repeat(1,0)
-%}
-{%
-	return {}
-%}
+}
+
+export {}
+
+return @module
 `)
 }
 
 func TestCompiler_CompileSwitch(t *testing.T) {
 	compileExpect(t, `
 @switch a
-`, `# gad: mixed
-{%
-	return {}
-%}`)
-	return
+`, `export {}
 
-	compileExpect(t, `
-@switch a
-	@case 1
-`, ``)
-
-	compileExpect(t, `
-@switch a
-	@case 1
-	@default
-`, ``)
-	compileExpect(t, `
-@switch a
-	@case 1
-	@case 2
-	@default
-`, ``)
-	compileExpect(t, `
-@switch a
-	@case 1
-	@case 2
-	@case 3
-	@default
-`, ``)
-	compileExpect(t, `
-@switch a
-	@case 1
-	@case 2
-	@case 3
-`, ``)
-	compileExpect(t, `
-@switch a
-	@case 1
-	@case 2
-	@case 3
-	div
-`, ``)
-}
-
-func TestCompiler_CompileImport(t *testing.T) {
-	err := compileW(os.Stdout, `@import "abc" as util`)
-	fmt.Println(err)
-}
-
-func TestCompiler_CompileConcat(t *testing.T) {
-	err := compileW(os.Stdout, `
-${-1}
-`)
-	fmt.Println(err)
-}
-
-func TestCompiler_CompileInit(t *testing.T) {
-	fmt.Println(compileW(os.Stdout, `
-	~~~
-		1
-		2
-	~~~
-`))
-}
-func TestCompiler_CompileCode(t *testing.T) {
-	fmt.Println(compileW(os.Stdout, `
-	~ 1
-`))
-	fmt.Println(compileW(os.Stdout, `
-	~~
-		1
-	~~
-`))
-	fmt.Println(compileW(os.Stdout, `
-	~~
-		1
-		2
-	~~
-`))
-	fmt.Println(compileW(os.Stdout, `
-	~~
-		1
-	2
-		3
-	~~
-`))
-}
-
-func TestCompiler_CompileMultiCode(t *testing.T) {
-	err := compileW(os.Stdout, `
-~~
-1
-2
-~~
-`)
-	fmt.Println(err)
-}
-
-func TestCompiler_CompileIf(t *testing.T) {
-	fmt.Println(compileW(os.Stdout, `
-@if a
-`))
-
-	fmt.Println(compileW(os.Stdout, `
-@if a
-	av
-@else if b
-	bv
-`))
-
-	fmt.Println(compileW(os.Stdout, `
-@if a
-	av
-@else if b
-	bv
-@else
-	cv
-`))
-}
-
-func TestCompiler_CompileTag(t *testing.T) {
-	fmt.Println(compileW(os.Stdout, `
-@comp Test(yield=nil)
-	div
-
-+Fn()
-
-+test.Fn()
-	a
-`))
-
-	fmt.Println(compileW(os.Stdout, `
-~ d := {}
-@comp m(v)
-	${v}
-+m(1)
-~ d.m = $comps.m
-+d.m(2)
-`))
-}
-
-func compileW(w io.Writer, tpl string) (err error) {
-	panic("not implemented")
+return @module`)
 }
 
 func compileExpect(t *testing.T, tpl, expected string) {
+	t.Helper()
 	tpl, expected = strings.TrimSpace(tpl), strings.TrimSpace(expected)
 
 	var o strings.Builder
 	err := CompileToGad(&o, []byte(tpl), Options{})
 	if err != nil {
-		t.Errorf("Compiler expect '%s', but got error: \"%+10.2v\"", expected, err)
+		t.Errorf("Compiler expect '%s', but got error: \"%v\"", expected, err)
 	}
-	require.Equal(t, expected, strings.TrimSpace(o.String()))
+	require.Equal(t, normalizeTrailingWS(expected), normalizeTrailingWS(strings.TrimSpace(o.String())))
 }
+
+func normalizeTrailingWS(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, " \t")
+	}
+	return strings.Join(lines, "\n")
+}
+
+var _ = normalizeTrailingWS

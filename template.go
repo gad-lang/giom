@@ -9,7 +9,7 @@ type TemplateData []map[string]any
 type Template struct {
 	BC       *gad.Bytecode
 	Global   map[string]any
-	Builtins *gad.Builtins
+	Builtins *gad.StaticBuiltins
 }
 
 func (t *Template) Executor() *TemplateExecutor {

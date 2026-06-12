@@ -345,13 +345,13 @@ func (p *Parser) parseImportModule() *Code {
 func (p *Parser) parseSlot() (s *Slot) {
 	var (
 		tok = p.expect(tokSlot)
-		c   = mustParseFirstStmt("func("+tok.Data["Args"]+"){}", false)
+		c   = mustParseFirstStmt("func _("+ensureFnParamSep(tok.Data["Args"])+"){}", false)
 	)
 
 	s = &Slot{
 		SourcePosition: p.pos(),
 		Name:           tok.Value,
-		Scope:          &c.(*node.ExprStmt).Expr.(*node.FuncExpr).Type.Params,
+		Scope:          &c.(*node.FuncStmt).Func.Type.Params,
 		ID:             strings.ReplaceAll(tok.Value, "-", "__"),
 	}
 
@@ -513,10 +513,10 @@ readmore:
 
 func (p *Parser) parseFunc() *Func {
 	tok := p.expect(tokFunc)
-	c := mustParseFirstStmt("func("+tok.Data["Args"]+"){}", false)
+	c := mustParseFirstStmt("func _("+ensureFnParamSep(tok.Data["Args"])+"){}", false)
 	f := &Func{
 		Name:           tok.Value,
-		Params:         &c.(*node.ExprStmt).Expr.(*node.FuncExpr).Type.Params,
+		Params:         &c.(*node.FuncStmt).Func.Type.Params,
 		Exported:       tok.Data["Exported"] == "true",
 		SourcePosition: p.pos(),
 	}
@@ -529,8 +529,8 @@ func (p *Parser) parseFunc() *Func {
 
 func (p *Parser) parseComp() *Comp {
 	tok := p.expect(tokComp)
-	c := mustParseFirstStmt("func("+tok.Data["Args"]+"){}", false)
-	comp := newComp(tok.Value, &c.(*node.ExprStmt).Expr.(*node.FuncExpr).Type.Params, tok.Data["Exported"] == "true")
+	c := mustParseFirstStmt("func("+ensureFnParamSep(tok.Data["Args"])+"){}", false)
+	comp := newComp(tok.Value, &c.(*node.FuncStmt).Func.Type.Params, tok.Data["Exported"] == "true")
 	comp.SourcePosition = p.pos()
 
 	if p.currenttoken.Kind == tokIndent {

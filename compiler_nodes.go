@@ -212,7 +212,7 @@ func (c *Compiler) visitTag(tag *parser.Tag) {
 			case *node.KeyValuePairLit:
 				items = append(items, e)
 			case *node.KeyValueLit:
-				items = append(items, &node.KeyValuePairLit{e.Key, e.Value})
+				items = append(items, &node.KeyValuePairLit{Key: e.Key, Value: e.Value})
 			}
 		}
 		return
@@ -299,7 +299,7 @@ func (c *Compiler) visitText(txt *parser.Text) {
 		switch t := s.(type) {
 		case *node.CodeBeginStmt, *node.CodeEndStmt:
 		case *node.MixedTextStmt:
-			nodes = append(nodes, newCall(node.String(t.Value(), 0)))
+			nodes = append(nodes, newCall(node.Str(t.Value(), 0)))
 		case *node.MixedValueStmt:
 			nodes = append(nodes, newCall(t.Expr))
 		default:

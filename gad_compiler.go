@@ -75,6 +75,7 @@ func (c *ToGadCompiler) Compile(out io.Writer) (err error) {
 		}
 
 		node.CodeW(&firstSpacerTrimWriter{w: out}, f, codeOptions...)
+
 		if _, err = gp.Parse(data.String(), "", nil, nil); err != nil {
 			return
 		}

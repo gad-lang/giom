@@ -1,10 +1,25 @@
 package giom
 
 import (
+	"os"
 	"testing"
 
 	"github.com/gad-lang/gad"
 )
+
+func Test_PostList(t *testing.T) {
+	name := "post_list"
+	f, _ := os.Create("v2/samples/layouts/" + name + ".gad")
+	defer f.Close()
+	b, err := os.ReadFile("v2/samples/layouts/" + name + ".giom")
+	if err != nil {
+		panic(err)
+	}
+	err = CompileToGad(f, b, Options{})
+	if err != nil {
+		panic(err)
+	}
+}
 
 func Test_RunErrorTrace(t *testing.T) {
 	runExpectErrorTrace(t, `

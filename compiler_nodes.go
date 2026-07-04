@@ -129,12 +129,12 @@ func (c *Compiler) visitComment(comment *parser.Comment) {
 func (c *Compiler) visitCondition(condition *parser.If) {
 	positives := condition.Positives
 	positive := positives[0]
-	c.write(`{% if ` + positive.Expression + ` %}`)
+	c.write(`{% if ` + positive.Expression + ` begin %}`)
 	if positive.Block != nil {
 		c.visitBlock(positive.Block)
 	}
 	for _, positive = range positives[1:] {
-		c.write(`{% else if ` + positive.Expression + ` %}`)
+		c.write(`{% else if ` + positive.Expression + ` begin %}`)
 		if positive.Block != nil {
 			c.visitBlock(positive.Block)
 		}
@@ -426,7 +426,7 @@ func (c *Compiler) visitCompCall(call *parser.CompCall) {
 		slotsNames []string
 	)
 
-	c.write("{% do %}")
+	c.write("{% begin %}")
 
 	if len(call.SlotPass) > 0 {
 		for i, slot := range call.SlotPass {
@@ -471,13 +471,13 @@ func (c *Compiler) visitSwitch(sw *parser.Switch) {
 	}
 
 	cases := sw.Cases
-	fmt.Fprintf(c.writer, "{%% if %s == %s %%}", sw.Expr, cases[0].Expr)
+	fmt.Fprintf(c.writer, "{%% if %s == %s begin %%}", sw.Expr, cases[0].Expr)
 	if cases[0].Content != nil {
 		c.visitBlock(cases[0].Content)
 	}
 	cases = cases[1:]
 	for len(cases) > 0 {
-		fmt.Fprintf(c.writer, "{%% else if %s == %s %%}", sw.Expr, cases[0].Expr)
+		fmt.Fprintf(c.writer, "{%% else if %s == %s begin %%}", sw.Expr, cases[0].Expr)
 		if cases[0].Content != nil {
 			c.visitBlock(cases[0].Content)
 		}

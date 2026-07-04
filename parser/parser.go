@@ -393,7 +393,7 @@ func (p *Parser) parseSlotPass() (s *SlotPass) {
 		SourcePosition: p.pos(),
 		Name:           c.Func,
 		FuncType: &node.FuncType{
-			Params: *ft,
+			FuncHeader: node.FuncHeader{Params: *ft},
 		},
 	}
 

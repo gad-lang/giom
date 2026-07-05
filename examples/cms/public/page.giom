@@ -5,5 +5,5 @@
         +hero(Model.Page.Title, Model.Page.Summary ; cover=Model.Page.CoverImage)
         div.container
             section.page-body
-                #{= Model.Page.Body}
+                #{=raw Model.Page.Body}
             +gallery(Model.Page.Images)

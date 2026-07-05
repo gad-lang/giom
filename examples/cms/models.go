@@ -9,14 +9,15 @@ type Page struct {
 	Summary    string `json:"summary"`
 	Body       string `json:"body"`
 	CoverImage string `json:"coverImage"`
-	Images     string `json:"images"`
-	Published  bool   `json:"published"`
+	Images     []string `json:"images" gorm:"serializer:json"`
+	Published  bool     `json:"published"`
 }
 
 type Tag struct {
 	gorm.Model
 	Name string `json:"name"`
 	Slug string `json:"slug" gorm:"uniqueIndex"`
+	URL  string `json:"url" gorm:"-"`
 }
 
 type Post struct {
@@ -27,9 +28,10 @@ type Post struct {
 	Body       string `json:"body"`
 	RightBody  string `json:"rightBody"`
 	CoverImage string `json:"coverImage"`
-	Images     string `json:"images"`
-	Published  bool   `json:"published"`
-	Tags       []Tag  `json:"tags" gorm:"many2many:post_tags"`
+	Images     []string `json:"images" gorm:"serializer:json"`
+	Published  bool     `json:"published"`
+	Tags       []Tag    `json:"tags" gorm:"many2many:post_tags"`
+	URL        string   `json:"url" gorm:"-"`
 }
 
 type MenuItem struct {

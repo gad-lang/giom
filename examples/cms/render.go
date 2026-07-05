@@ -110,8 +110,8 @@ func (a *App) model(title string, crumbs []crumb, values gad.Dict) gad.Dict {
 	model := gad.Dict{
 		"SiteTitle":   gad.Str("GION CMS"),
 		"Title":       gad.Str(title),
-		"Menu":        a.menuGad(),
-		"Breadcrumbs": crumbsToGad(crumbs),
+		"Menu":        gad.MustNewReflectValue(a.menuItems()),
+		"Breadcrumbs": crumbsValue(crumbs),
 		"Year":        gad.Int(time.Now().Year()),
 	}
 	for k, v := range values {

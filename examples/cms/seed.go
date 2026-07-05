@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm/clause"
@@ -49,7 +48,7 @@ func (a *App) importSeedData(sd *SeedData) error {
 			Summary:    sp.Summary,
 			Body:       sp.Body,
 			CoverImage: sp.CoverImage,
-			Images:     strings.Join(sp.Images, "\n"),
+			Images:     sp.Images,
 			Published:  sp.Published,
 		}
 		pages = append(pages, p)
@@ -76,7 +75,7 @@ func (a *App) importSeedData(sd *SeedData) error {
 			Body:       sp.Body,
 			RightBody:  sp.RightBody,
 			CoverImage: sp.CoverImage,
-			Images:     strings.Join(sp.Images, "\n"),
+			Images:     sp.Images,
 			Published:  sp.Published,
 		}
 		if err := a.DB.Create(&p).Error; err != nil {

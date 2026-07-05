@@ -1,7 +1,9 @@
 .idea
 cms.db
 **/cms
+!examples/cms/
 gad
 giom
 todo
 todo.json
+TASK.md

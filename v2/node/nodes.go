@@ -126,10 +126,7 @@ func writeCallExpr(s string) *gnode.CallExpr {
 }
 
 func rawStrExpr(s string) gnode.Expr {
-	rawstr := &gnode.CallExpr{Func: gnode.EIdent("rawstr", 0)}
-	rawstr.Args.Values = append(rawstr.Args.Values, gnode.Str(s, 0))
-	rawstr.NamedArgs.Append(&gnode.NamedArgExpr{Ident: gnode.EIdent("cast", 0)}, nil)
-	return rawstr
+	return gnode.EToRaw(0, gnode.Str(s, 0))
 }
 
 func writeCallExprs(expr ...gnode.Expr) *gnode.CallExpr {
@@ -635,35 +632,7 @@ func (s *SwitchStmt) StmtNode()       {}
 func (s *SwitchStmt) String() string  { return "giom.Switch" }
 
 func (s *SwitchStmt) WriteCode(ctx *gnode.CodeWriteContext) {
-	ctx.WriteString("match (")
-	s.Tag.WriteCode(ctx)
-	ctx.WriteString(") {")
-	ctx.Depth++
-	for _, c := range s.Cases {
-		ctx.WriteSemi()
-		c.Expr.WriteCode(ctx)
-		ctx.WriteString(" {")
-		ctx.Depth++
-		ctx.WriteSemi()
-		ctx.WriteStmts(c.Body...)
-		ctx.Depth--
-		ctx.WriteSemi()
-		ctx.WriteString("}")
-		ctx.WriteString(",")
-	}
-	if len(s.Default) > 0 {
-		ctx.WriteSemi()
-		ctx.WriteString("else {")
-		ctx.Depth++
-		ctx.WriteSemi()
-		ctx.WriteStmts(s.Default...)
-		ctx.Depth--
-		ctx.WriteSemi()
-		ctx.WriteString("}")
-	}
-	ctx.Depth--
-	ctx.WriteSemi()
-	ctx.WriteString("}")
+	switchMatchExpr(s).WriteCode(ctx)
 }
 
 // =============================================================================
@@ -719,12 +688,8 @@ func Quote(s string) string {
 }
 
 func writeRaw(ctx *gnode.CodeWriteContext, s string) {
-	rawstrCall := &gnode.CallExpr{Func: gnode.EIdent("rawstr", 0)}
-	rawstrCall.Args.Values = append(rawstrCall.Args.Values, gnode.Str(s, 0))
-	rawstrCall.NamedArgs.Append(&gnode.NamedArgExpr{Ident: gnode.EIdent("cast", 0)}, nil)
-
 	writeCall := &gnode.CallExpr{Func: gnode.EIdent("write", 0)}
-	writeCall.Args.Values = append(writeCall.Args.Values, rawstrCall)
+	writeCall.Args.Values = append(writeCall.Args.Values, rawStrExpr(s))
 	ctx.WriteStmts(gnode.SExpr(writeCall))
 }
 

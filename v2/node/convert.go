@@ -104,6 +104,10 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertSlot(st)
 	case *SlotPassStmt:
 		return convertSlotPass(st)
+	case *CodeStmt:
+		return st.Stmts
+	case *AssignStmt:
+		return convertAssign(st)
 	case *ForStmt:
 		return convertFor(st)
 	case *IfStmt:
@@ -116,6 +120,40 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertTag(st)
 	default:
 		return gnode.Stmts{s}
+	}
+}
+
+func convertAssign(s *AssignStmt) gnode.Stmts {
+	return gnode.Stmts{
+		&gnode.AssignStmt{
+			LHS:      []gnode.Expr{s.LHS},
+			RHS:      []gnode.Expr{s.RHS},
+			Token:    assignToken(s.Op),
+			TokenPos: s.NodePos,
+		},
+	}
+}
+
+func assignToken(op string) token.Token {
+	switch op {
+	case ":=", ":":
+		return token.Define
+	case "=":
+		return token.Assign
+	case "+=":
+		return token.AddAssign
+	case "-=":
+		return token.SubAssign
+	case "*=":
+		return token.MulAssign
+	case "/=":
+		return token.QuoAssign
+	case "%=":
+		return token.RemAssign
+	case "??=":
+		return token.NullichAssign
+	default:
+		return token.Assign
 	}
 }
 
@@ -197,23 +235,28 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 }
 
 func convertSwitch(s *SwitchStmt) gnode.Stmts {
-	var elseStmt gnode.Stmt
+	return gnode.Stmts{gnode.SExpr(switchMatchExpr(s))}
+}
+
+func switchMatchExpr(s *SwitchStmt) *gnode.MatchExpr {
+	match := &gnode.MatchExpr{
+		MatchPos: s.Pos(),
+		Expr:     s.Tag,
+		LBrace:   s.Pos(),
+		RBrace:   s.End(),
+	}
+	for _, c := range s.Cases {
+		match.Arms = append(match.Arms, &gnode.MatchArm{
+			Conds: []gnode.Expr{c.Expr},
+			Body:  gnode.SBlock(s.Pos(), s.End(), convertBody(c.Body)...),
+		})
+	}
 	if len(s.Default) > 0 {
-		elseStmt = gnode.SBlock(s.Pos(), s.End(), convertBody(s.Default)...)
+		match.Arms = append(match.Arms, &gnode.MatchArm{
+			Body: gnode.SBlock(s.Pos(), s.End(), convertBody(s.Default)...),
+		})
 	}
-	for i := len(s.Cases) - 1; i >= 0; i-- {
-		cond := &gnode.BinaryExpr{
-			LHS:   s.Tag,
-			RHS:   s.Cases[i].Expr,
-			Token: token.Equal,
-		}
-		if !cond.TokenPos.IsValid() {
-			cond.TokenPos = s.Pos()
-		}
-		then := gnode.SBlock(s.Cases[i].Body[0].Pos(), s.Cases[i].Body[len(s.Cases[i].Body)-1].End(), convertBody(s.Cases[i].Body)...)
-		elseStmt = &gnode.IfStmt{Cond: cond, Body: then, Else: elseStmt}
-	}
-	return gnode.Stmts{elseStmt}
+	return match
 }
 
 func convertExport(e *ExportStmt) gnode.Stmts {

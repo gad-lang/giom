@@ -678,19 +678,27 @@ func (p *Parser) parseCompCall() *giomnode.CompCallStmt {
 
 	if p.Token.Token == giomtoken.Indent {
 		block := p.parseBlock(call)
+		var lastMainSlot *giomnode.SlotPassStmt
 		for _, child := range block {
 			switch t := child.(type) {
 			case *giomnode.SlotPassStmt:
 				call.SlotPass = append(call.SlotPass, t)
+				lastMainSlot = nil
 			default:
 				if t != nil {
-					call.SlotPass = append(call.SlotPass, &giomnode.SlotPassStmt{
-						NodePos:  t.Pos(),
-						NodeEnd:  t.End(),
-						Name:     gnode.EIdent("main", 0),
-						FuncType: gnode.ProxyFuncType(),
-						Body:     gnode.Stmts{t},
-					})
+					if lastMainSlot != nil {
+						lastMainSlot.Body.Append(t)
+						lastMainSlot.NodeEnd = t.End()
+					} else {
+						lastMainSlot = &giomnode.SlotPassStmt{
+							NodePos:  t.Pos(),
+							NodeEnd:  t.End(),
+							Name:     gnode.EIdent("main", 0),
+							FuncType: gnode.ProxyFuncType(),
+							Body:     gnode.Stmts{t},
+						}
+						call.SlotPass = append(call.SlotPass, lastMainSlot)
+					}
 				}
 			}
 		}

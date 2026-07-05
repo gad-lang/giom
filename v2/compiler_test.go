@@ -130,8 +130,8 @@ func TestTranspileToGadSourceBasicStatements(t *testing.T) {
 			name: "for else",
 			src:  "@for item in items\n\tli\n@else\n\tp\n",
 			contains: []string{
-				`for (item in items){`,
-				`write(raw "<li")`,
+				`for _, item in items {`,
+				`write(raw "<li"`,
 			},
 		},
 		{
@@ -178,11 +178,13 @@ func TestTranspileToGadSourceComponentsAndSlots(t *testing.T) {
 		`title`,
 		`; $slots={}`,
 		`const $slot$header$ = func() {`,
-		`var $slot$header = ($slots.header ?? $slot$header$)`,
+		`$slots["header"]`,
 		`write(raw "<div")`,
 		`class="card"`,
 		`helper = func(`,
-		`card("Hi")`,
+		`card(`,
+		`$$slots["header"] = $slot0`,
+		`$slots=$$slots`,
 		`export Result = helper`,
 	} {
 		require.Contains(t, got, want)

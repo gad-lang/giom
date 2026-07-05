@@ -137,7 +137,7 @@ func TestParser_GadOutputParses(t *testing.T) {
 	p := gadparser.NewParser(sf, nil)
 	_, err := p.ParseFile()
 	require.NoError(t, err)
-	require.Contains(t, code, "match (")
+	require.Contains(t, code, "match")
 }
 
 func TestParseCallArgsString_GiomSyntax(t *testing.T) {

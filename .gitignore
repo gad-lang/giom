@@ -1,1 +1,7 @@
 .idea
+cms.db
+**/cms
+gad
+giom
+todo
+todo.json

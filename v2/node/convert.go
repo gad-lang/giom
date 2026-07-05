@@ -1,6 +1,8 @@
 package node
 
 import (
+	"fmt"
+
 	gnode "github.com/gad-lang/gad/parser/node"
 	"github.com/gad-lang/gad/parser/source"
 	"github.com/gad-lang/gad/token"
@@ -201,6 +203,10 @@ func convertCompDecl(c *CompDecl) gnode.Stmts {
 	}
 	body = append(body, convertBody(c.Body)...)
 
+	if c.Name == "main" {
+		return body
+	}
+
 	return gnode.Stmts{
 		gnode.SDecl(&gnode.GenDecl{
 			Tok:    token.Const,
@@ -229,9 +235,76 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	}
 	call.Args = c.Args.Args
 	call.NamedArgs = c.Args.NamedArgs
-	return gnode.Stmts{
-		gnode.SExpr(call),
+
+	if len(c.SlotPass) == 0 {
+		return gnode.Stmts{gnode.SExpr(call)}
 	}
+
+	// With slot passes, wrap in a block:
+	//   const $slot0 = func(...) { ... }
+	//   var $$slots = {}
+	//   $$slots["main"] = $slot0
+	//   page_wrapper(args; $slots=$$slots)
+	var stmts gnode.Stmts
+	for i, sp := range c.SlotPass {
+		ft := sp.FuncType
+		if ft != nil && !ft.FuncPos.IsValid() {
+			ft.FuncPos = sp.Pos()
+		}
+		stmts.Append(gnode.SDecl(&gnode.GenDecl{
+			Tok:    token.Const,
+			TokPos: sp.Pos(),
+			Specs: []gnode.Spec{
+				&gnode.ValueSpec{
+					Idents: []*gnode.IdentExpr{gnode.EIdent(fmt.Sprintf("$slot%d", i), sp.Pos())},
+					Values: []gnode.Expr{
+						&gnode.FuncExpr{
+							Type: ft,
+							Body: gnode.SBlock(sp.Pos(), sp.End(), convertBody(sp.Body)...),
+						},
+					},
+				},
+			},
+		}))
+	}
+	stmts.Append(gnode.SDecl(&gnode.GenDecl{
+		Tok:    token.Var,
+		TokPos: c.Pos(),
+		Specs: []gnode.Spec{
+			&gnode.ValueSpec{
+				Idents: []*gnode.IdentExpr{gnode.EIdent("$$slots", c.Pos())},
+				Values: []gnode.Expr{gnode.EDict(c.Pos(), c.End())},
+			},
+		},
+	}))
+	for i, sp := range c.SlotPass {
+		stmts = append(stmts, &gnode.AssignStmt{
+			LHS: []gnode.Expr{
+				&gnode.IndexExpr{
+					X:     gnode.EIdent("$$slots", 0),
+					Index: gnode.Str(slotPassName(sp), 0),
+				},
+			},
+			RHS:      []gnode.Expr{gnode.EIdent(fmt.Sprintf("$slot%d", i), 0)},
+			Token:    token.Assign,
+			TokenPos: sp.Pos(),
+		})
+	}
+	call.NamedArgs.AppendS("$slots", gnode.EIdent("$$slots", 0))
+	stmts.Append(gnode.SExpr(call))
+	return stmts
+}
+
+func slotPassName(sp *SlotPassStmt) string {
+	if sp.Name != nil {
+		if s, ok := sp.Name.(*gnode.StrLit); ok {
+			return s.Value()
+		}
+		if s, ok := sp.Name.(*gnode.IdentExpr); ok {
+			return s.Name
+		}
+	}
+	return "default"
 }
 
 func convertSwitch(s *SwitchStmt) gnode.Stmts {
@@ -291,7 +364,10 @@ func convertSlot(s *SlotDecl) gnode.Stmts {
 				Idents: []*gnode.IdentExpr{gnode.EIdent("$slot$"+s.ID, s.Pos())},
 				Values: []gnode.Expr{
 					&gnode.BinaryExpr{
-						LHS:      gnode.EIdent("$slots."+s.ID, 0),
+						LHS: &gnode.IndexExpr{
+							X:     gnode.EIdent("$slots", 0),
+							Index: gnode.Str(s.ID, 0),
+						},
 						RHS:      gnode.EIdent("$slot$"+s.ID+"$", 0),
 						Token:    token.Nullich,
 						TokenPos: s.Pos(),
@@ -328,6 +404,19 @@ func convertSlotPass(s *SlotPassStmt) gnode.Stmts {
 }
 
 func convertFor(f *ForStmt) gnode.Stmts {
+	if bin, ok := f.Cond.(*gnode.BinaryExpr); ok && bin.Token == token.In {
+		if val, ok := bin.LHS.(*gnode.IdentExpr); ok {
+			return gnode.Stmts{
+				&gnode.ForInStmt{
+					ForPos:   f.Pos(),
+					Key:      &gnode.IdentExpr{Name: "_"},
+					Value:    val,
+					Iterable: bin.RHS,
+					Body:     gnode.SBlock(f.Pos(), f.End(), convertBody(f.Body)...),
+				},
+			}
+		}
+	}
 	return gnode.Stmts{
 		&gnode.ForStmt{
 			ForPos: f.Pos(),

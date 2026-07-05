@@ -10,89 +10,20 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	gp "github.com/gad-lang/gad/parser"
+	gadparser "github.com/gad-lang/gad/parser"
+	"github.com/gad-lang/gad/parser/node"
 	"github.com/gad-lang/gad/parser/source"
-	gt "github.com/gad-lang/gad/token"
+	"github.com/gad-lang/gad/token"
+
+	giomtoken "github.com/gad-lang/giom/token"
 )
 
-type Kind int8
-
-func (k Kind) String() string {
-	if k > 0 && k <= tokDefault {
-		return tokNames[k]
-	}
-	return fmt.Sprintf("Kind(%d)", k)
-}
-
-const (
-	tokEOF Kind = iota + 1
-	tokDoctype
-	tokComment
-	tokIndent
-	tokOutdent
-	tokBlank
-	tokId
-	tokClassName
-	tokTag
-	tokText
-	tokAttribute
-	tokIf
-	tokElseIf
-	tokWrap
-	tokElse
-	tokFor
-	tokAssignment
-	tokCode
-	tokImportModule
-	tokFunc
-	tokSlot
-	tokSlotPass
-	tokComp
-	tokCompCall
-	tokSwitch
-	tokCase
-	tokDefault
-	tokExport
-)
-
-var tokNames = [...]string{
-	tokEOF:          "EOF",
-	tokDoctype:      "DOCTYPE",
-	tokComment:      "COMENT",
-	tokIndent:       "INDENT",
-	tokOutdent:      "OUTDENT",
-	tokBlank:        "BLANK",
-	tokId:           "ID",
-	tokClassName:    "CLASS_NAME",
-	tokTag:          "TAG",
-	tokText:         "TEXT",
-	tokAttribute:    "ATTRIBUTE",
-	tokIf:           "IF",
-	tokElseIf:       "ELSE_IF",
-	tokWrap:         "WRAP",
-	tokElse:         "ELSE",
-	tokFor:          "FOR",
-	tokAssignment:   "ASSIGNMENT",
-	tokCode:         "CODE",
-	tokImportModule: "IMPORT_MODULE",
-	tokFunc:         "FUNC",
-	tokSlot:         "SLOT",
-	tokSlotPass:     "SLOT_PASS",
-	tokComp:         "COMP",
-	tokCompCall:     "COMP_CALL",
-	tokSwitch:       "SWITCH",
-	tokCase:         "CASE",
-	tokDefault:      "DEFAULT",
-	tokExport:       "EXPORT",
-}
-
-const (
-	scnNewLine = iota
-	scnLine
-	scnEOF
-)
+// =============================================================================
+// scanner — implements gad's ScannerInterface for giom template syntax
+// =============================================================================
 
 type scanner struct {
+	file        *source.File
 	reader      *bufio.Reader
 	indentStack *list.List
 	stash       *list.List
@@ -100,47 +31,41 @@ type scanner struct {
 	state  int32
 	buffer string
 
-	curPos        int
-	line          int
-	col           int
-	lastTokenLine int
-	lastTokenCol  int
+	offset        int // current byte offset within file
+	line          int // current line number (0-based)
+	col           int // current column
+	lastTokenPos  source.Pos
 	lastTokenSize int
 
-	readRaw bool
+	readRaw        bool
+	mode           gadparser.ScanMode
+	mixedDelimiter gadparser.MixedDelimiter
+	errorHandler   []source.ScannerErrorHandler
 }
 
-type token struct {
-	Kind     Kind
-	Value    string
-	Data     map[string]string
-	Values   []string
-	AnyValue any
-}
-
-func newScanner(r io.Reader) *scanner {
-	s := new(scanner)
-	s.reader = bufio.NewReader(r)
-	s.indentStack = list.New()
-	s.stash = list.New()
-	s.state = scnNewLine
-	s.line = -1
-	s.col = 0
-
+// newScanner creates a scanner that reads from r using file for position tracking.
+func newScanner(file *source.File, r io.Reader) *scanner {
+	s := &scanner{
+		file:        file,
+		reader:      bufio.NewReader(r),
+		indentStack: list.New(),
+		stash:       list.New(),
+		state:       giomtoken.ScnNewLine,
+		line:        -1,
+		col:         0,
+		mixedDelimiter: gadparser.MixedDelimiter{
+			Start: []rune("#{"),
+			End:   []rune("}"),
+		},
+	}
 	return s
 }
 
-func (s *scanner) Pos() SourcePosition {
-	return SourcePosition{
-		s.curPos,
-		s.lastTokenLine + 1,
-		s.lastTokenCol + 1,
-		s.lastTokenSize,
-		""}
-}
+// =============================================================================
+// ScannerInterface implementation
+// =============================================================================
 
-// Returns next token found in buffer
-func (s *scanner) Next() *token {
+func (s *scanner) Scan() (t gadparser.PToken) {
 	if s.readRaw {
 		s.readRaw = false
 		return s.NextRaw()
@@ -149,236 +74,158 @@ func (s *scanner) Next() *token {
 	s.ensureBuffer()
 
 	if stashed := s.stash.Front(); stashed != nil {
-		tok := stashed.Value.(*token)
+		tok := stashed.Value.(gadparser.PToken)
 		s.stash.Remove(stashed)
 		return tok
 	}
 
-do:
 	switch s.state {
-	case scnEOF:
+	case giomtoken.ScnEOF:
 		if outdent := s.indentStack.Back(); outdent != nil {
 			s.indentStack.Remove(outdent)
-			return &token{Kind: tokOutdent}
+			return s.newToken(giomtoken.Outdent, "", "")
 		}
+		return s.newToken(giomtoken.EOF, "", "")
 
-		return &token{Kind: tokEOF}
-	case scnNewLine:
-		s.state = scnLine
-
-		if tok := s.scanIndent(); tok != nil {
+	case giomtoken.ScnNewLine:
+		s.state = giomtoken.ScnLine
+		if tok := s.scanIndent(); tok.Valid() {
 			return tok
 		}
+		return s.Scan()
 
-		return s.Next()
-	case scnLine:
-		if tok := s.scanExit(); tok != nil {
-			s.state = scnEOF
-			goto do
-		}
-
-		if tok := s.scanExport(); tok != nil {
+	case giomtoken.ScnLine:
+		if tok := s.scanExport(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanFunc(); tok != nil {
+		if tok := s.scanFunc(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanComp(); tok != nil {
+		if tok := s.scanComp(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanCompCall(); tok != nil {
+		if tok := s.scanCompCall(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanSwitch(); tok != nil {
+		if tok := s.scanSwitch(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanCase(); tok != nil {
+		if tok := s.scanCase(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanDefault(); tok != nil {
+		if tok := s.scanDefault(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanDoctype(); tok != nil {
+		if tok := s.scanDoctype(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanCondition(); tok != nil {
+		if tok := s.scanCondition(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanFor(); tok != nil {
+		if tok := s.scanFor(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanImportModule(); tok != nil {
+		if tok := s.scanImportModule(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanSlot(); tok != nil {
+		if tok := s.scanSlot(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanSlotPass(); tok != nil {
+		if tok := s.scanSlotPass(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanAssignment(); tok != nil {
+		if tok := s.scanAssignment(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanCode(); tok != nil {
+		if tok := s.scanCode(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanMCode(); tok != nil {
+		if tok := s.scanMCode(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanTag(); tok != nil {
+		if tok := s.scanTag(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanId(); tok != nil {
+		if tok := s.scanId(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanClassName(); tok != nil {
+		if tok := s.scanClassName(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanAttribute(); tok != nil {
+		if tok := s.scanAttribute(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanComment(); tok != nil {
+		if tok := s.scanComment(); tok.Valid() {
 			return tok
 		}
-
-		if tok := s.scanText(); tok != nil {
+		if tok := s.scanText(); tok.Valid() {
 			return tok
 		}
 	}
 
-	return nil
+	return s.newToken(token.Illegal, "", "")
 }
 
-func (s *scanner) Indentation() string {
-	var b strings.Builder
-	if s.indentStack != nil {
-		for e := s.indentStack.Front(); e != nil; e = e.Next() {
-			// do something with e.Value
-			b.WriteString(e.Value.(*regexp.Regexp).String())
-		}
+func (s *scanner) Mode() gadparser.ScanMode     { return s.mode }
+func (s *scanner) SetMode(m gadparser.ScanMode) { s.mode = m }
+func (s *scanner) SourceFile() *source.File     { return s.file }
+func (s *scanner) Source() []byte               { return s.file.Data.Bytes() }
+
+func (s *scanner) ErrorHandler(h ...source.ScannerErrorHandler) {
+	s.errorHandler = append(s.errorHandler, h...)
+}
+
+func (s *scanner) GetMixedDelimiter() *gadparser.MixedDelimiter {
+	return &s.mixedDelimiter
+}
+
+// =============================================================================
+// Token construction
+// =============================================================================
+
+func (s *scanner) newToken(kind token.Token, literal, value string) gadparser.PToken {
+	pt := gadparser.PToken{
+		TokenLit: node.TokenLit{
+			Pos:     s.lastTokenPos,
+			Token:   kind,
+			Literal: literal,
+		},
 	}
-	return b.String()
-}
-
-func (s *scanner) NextRaw() *token {
-	result := ""
-	level := 0
-
-	for {
-		s.ensureBuffer()
-
-		switch s.state {
-		case scnEOF:
-			return &token{Kind: tokText, Value: result, Data: map[string]string{"Mode": "raw"}}
-		case scnNewLine:
-			s.state = scnLine
-
-			if tok := s.scanIndent(); tok != nil {
-				if tok.Kind == tokIndent {
-					level++
-				} else if tok.Kind == tokOutdent {
-					level--
-				} else {
-					result = result + "\n"
-					continue
-				}
-
-				if level < 0 {
-					s.stash.PushBack(&token{Kind: tokOutdent})
-
-					if len(result) > 0 && result[len(result)-1] == '\n' {
-						result = result[:len(result)-1]
-					}
-
-					return &token{Kind: tokText, Value: result, Data: map[string]string{"Mode": "raw"}}
-				}
-			}
-		case scnLine:
-			if len(result) > 0 {
-				result = result + "\n"
-			}
-			for i := 0; i < level; i++ {
-				result += "\t"
-			}
-			result = result + s.buffer
-			s.consume(len(s.buffer))
-		}
+	if value != "" {
+		pt.Set("value", value)
 	}
-
-	return nil
+	return pt
 }
 
-func (s *scanner) NextRawCode(eof string) (lines []string) {
-	var (
-		ind = s.Indentation()
-	)
-	for {
-		s.ensureBuffer()
-
-		switch s.state {
-		case scnEOF:
-			return
-		case scnNewLine:
-			if s.buffer == ind {
-				lines = append(lines, "")
-				s.consume(len(s.buffer))
-			} else {
-				var (
-					br   = []rune(s.buffer)
-					indr = []rune(ind)
-				)
-				for len(indr) > 0 && len(br) > 0 {
-					if br[0] == indr[0] {
-						br = br[1:]
-						indr = indr[1:]
-					} else {
-						break
-					}
-				}
-				b := string(br)
-				if b == eof {
-					s.consume(len(s.buffer))
-					return
-				} else {
-					lines = append(lines, b)
-					s.consume(len(s.buffer))
-				}
-			}
-		}
+func (s *scanner) newTokenWithData(kind token.Token, literal string, data map[string]string) gadparser.PToken {
+	pt := gadparser.PToken{
+		TokenLit: node.TokenLit{
+			Pos:     s.lastTokenPos,
+			Token:   kind,
+			Literal: literal,
+		},
 	}
+	for k, v := range data {
+		pt.Set(k, v)
+	}
+	return pt
 }
+
+// =============================================================================
+// Indentation scanning
+// =============================================================================
 
 var rgxIndent = regexp.MustCompile(`^(\s+)`)
 
-func (s *scanner) scanIndent() *token {
+func (s *scanner) scanIndent() gadparser.PToken {
 	if len(s.buffer) == 0 {
-		return &token{Kind: tokBlank}
+		s.consume(0)
+		return s.newToken(giomtoken.Blank, "", "")
 	}
 
 	var head *list.Element
 	for head = s.indentStack.Front(); head != nil; head = head.Next() {
 		value := head.Value.(*regexp.Regexp)
-
 		if match := value.FindString(s.buffer); len(match) != 0 {
 			s.consume(len(match))
 		} else {
@@ -391,7 +238,7 @@ func (s *scanner) scanIndent() *token {
 	if len(newIndent) != 0 && head == nil {
 		s.indentStack.PushBack(regexp.MustCompile(regexp.QuoteMeta(newIndent)))
 		s.consume(len(newIndent))
-		return &token{Kind: tokIndent, Value: newIndent}
+		return s.newToken(giomtoken.Indent, newIndent, newIndent)
 	}
 
 	if len(newIndent) == 0 && head != nil {
@@ -399,9 +246,10 @@ func (s *scanner) scanIndent() *token {
 			next := head.Next()
 			s.indentStack.Remove(head)
 			if next == nil {
-				return &token{Kind: tokOutdent}
+				return s.newToken(giomtoken.Outdent, "", "")
 			} else {
-				s.stash.PushBack(&token{Kind: tokOutdent})
+				t := s.newToken(giomtoken.Outdent, "", "")
+				s.stash.PushBack(t)
 			}
 			head = next
 		}
@@ -411,146 +259,144 @@ func (s *scanner) scanIndent() *token {
 		panic("Mismatching indentation. Please use a coherent indent schema.")
 	}
 
-	return nil
+	return gadparser.PToken{}
 }
+
+func (s *scanner) Indentation() string {
+	var b strings.Builder
+	for e := s.indentStack.Front(); e != nil; e = e.Next() {
+		b.WriteString(e.Value.(*regexp.Regexp).String())
+	}
+	return b.String()
+}
+
+// =============================================================================
+// Scan methods — regex-based line matching
+// =============================================================================
 
 var rgxDoctype = regexp.MustCompile(`^(!!!|@doctype)\s*(.*)`)
 
-func (s *scanner) scanDoctype() *token {
+func (s *scanner) scanDoctype() gadparser.PToken {
 	if sm := rgxDoctype.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		if len(sm[2]) == 0 {
-			sm[2] = "html"
+		val := sm[2]
+		if val == "" {
+			val = "html"
 		}
-
 		s.consume(len(sm[0]))
-		return &token{Kind: tokDoctype, Value: sm[2]}
+		return s.newToken(giomtoken.Doctype, sm[0], val)
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxIf = regexp.MustCompile(`^@if\s+(.+)$`)
 var rgxElse = regexp.MustCompile(`^@else(\s*|\s+if\s+(.+))$`)
 
-func (s *scanner) scanCondition() *token {
+func (s *scanner) scanCondition() gadparser.PToken {
 	if sm := rgxIf.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokIf, Value: sm[1]}
+		return s.newToken(giomtoken.If, sm[0], sm[1])
 	}
-
 	if sm := rgxElse.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		if strings.Contains(strings.TrimSpace(sm[0][4:]), "if") {
-			return &token{Kind: tokElseIf, Value: sm[2]}
+			return s.newToken(giomtoken.ElseIf, sm[0], sm[2])
 		}
-		return &token{Kind: tokElse}
+		return s.newToken(giomtoken.Else, sm[0], "")
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
-var rgxEach = regexp.MustCompile(`^@for\s+(.+)$`)
+var rgxFor = regexp.MustCompile(`^@for\s+(.+)$`)
 
-func (s *scanner) scanFor() *token {
-	if sm := rgxEach.FindStringSubmatch(s.buffer); len(sm) != 0 {
+func (s *scanner) scanFor() gadparser.PToken {
+	if sm := rgxFor.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokFor, Value: sm[0][1:]}
+		return s.newToken(giomtoken.For, sm[0], strings.TrimSpace(sm[1]))
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxAssignment = regexp.MustCompile(`^(\$[\w0-9\-_]*)?\s*([+-/*:]?)=\s*(.+)$`)
 
-func (s *scanner) scanAssignment() *token {
+func (s *scanner) scanAssignment() gadparser.PToken {
 	if sm := rgxAssignment.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokAssignment, Value: sm[3], Data: map[string]string{"X": sm[1], "Op": sm[2]}}
+		pt := s.newToken(giomtoken.Assignment, sm[0], sm[3])
+		pt.Set("x", sm[1])
+		pt.Set("op", sm[2])
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxCode = regexp.MustCompile(`^\s*~\s+(.+)$`)
 
-func (s *scanner) scanCode() *token {
+func (s *scanner) scanCode() gadparser.PToken {
 	if sm := rgxCode.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokCode, Values: []string{sm[1]}}
+		pt := s.newToken(giomtoken.Code, sm[0], "")
+		pt.Set("values", []string{sm[1]})
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxMCode = regexp.MustCompile(`^\s*~~\s*$`)
 
-func (s *scanner) scanMCode() *token {
+func (s *scanner) scanMCode() gadparser.PToken {
 	if sm := rgxMCode.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		code := s.NextRawCode("~~")
-		return &token{Kind: tokCode, Values: code}
+		pt := s.newToken(giomtoken.Code, "", "")
+		pt.Set("values", code)
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxComment = regexp.MustCompile(`^\/\/(-)?\s*(.*)$`)
 
-func (s *scanner) scanComment() *token {
+func (s *scanner) scanComment() gadparser.PToken {
 	if sm := rgxComment.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		mode := "embed"
 		if len(sm[1]) != 0 {
 			mode = "silent"
 		}
-
 		s.consume(len(sm[0]))
-		return &token{Kind: tokComment, Value: sm[2], Data: map[string]string{"Mode": mode}}
+		pt := s.newToken(giomtoken.Comment, sm[0], sm[2])
+		pt.Set("mode", mode)
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxId = regexp.MustCompile(`^#([\w-]+)(?:\s*\?\s*(.*)$)?`)
 
-func (s *scanner) scanId() *token {
+func (s *scanner) scanId() gadparser.PToken {
 	if sm := rgxId.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokId, Value: sm[1], Data: map[string]string{"Condition": sm[2]}}
+		pt := s.newToken(giomtoken.Id, sm[0], sm[1])
+		pt.Set("condition", sm[2])
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxClassName = regexp.MustCompile(`^\.([\w-]+)(?:\s*\?\s*(.*)$)?`)
 
-func (s *scanner) scanClassName() *token {
+func (s *scanner) scanClassName() gadparser.PToken {
 	if sm := rgxClassName.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokClassName, Value: sm[1], Data: map[string]string{"Condition": sm[2]}}
+		pt := s.newToken(giomtoken.ClassName, sm[0], sm[1])
+		pt.Set("condition", sm[2])
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxAttribute = regexp.MustCompile(`^\[([\w\-:@\.]+)\s*(?:=\s*(\"([^\"\\]*)\"|([^\]]+)))?\](?:\s*\?\s*(.*)$)?`)
 
-func (s *scanner) scanAttribute() *token {
-	if s.buffer[0] == '[' {
-		fs := source.NewFileSet()
-		sf := fs.AddFileData("-", -1, []byte(s.buffer))
-		p := gp.NewParser(sf, nil)
-		lbrack := p.Expect(gt.LBrack)
-		ret := p.ParseKeyValueArrayLitAt(lbrack, gt.RBrack)
-		if p.Errors.Err() == nil {
-			s.consume(int(ret.RParen))
-			return &token{Kind: tokAttribute, AnyValue: ret}
-		}
-
-		// value := s.buffer[:i]
-		// s.consume(len(value))
-		// return &token{Kind: tokAttribute, Value: value, Data: map[string]string{"Content": sm[4], "Mode": "expression", "Condition": sm[5]}}
-	}
-
+func (s *scanner) scanAttribute() gadparser.PToken {
 	if sm := rgxAttribute.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 
@@ -559,238 +405,530 @@ func (s *scanner) scanAttribute() *token {
 			if sm[2] == "" {
 				flag = "true"
 			}
-			return &token{Kind: tokAttribute, Value: sm[1], Data: map[string]string{
-				"Content":   sm[3],
-				"Mode":      "raw",
-				"Condition": sm[5],
-				"Flag":      flag,
-			}}
+			pt := s.newToken(giomtoken.Attribute, sm[0], sm[1])
+			pt.Set("content", sm[3])
+			pt.Set("mode", "raw")
+			pt.Set("condition", sm[5])
+			pt.Set("flag", flag)
+			return pt
 		}
 
 		if sm[2] != `""` {
-			return &token{Kind: tokAttribute, Value: sm[1], Data: map[string]string{"Content": sm[4], "Mode": "expression", "Condition": sm[5]}}
+			pt := s.newToken(giomtoken.Attribute, sm[0], sm[1])
+			pt.Set("content", sm[4])
+			pt.Set("mode", "expression")
+			pt.Set("condition", sm[5])
+			return pt
 		}
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxImportModule = regexp.MustCompile(`^@import\s+("[0-9a-zA-Z_\-\. \/][0-9a-zA-Z_\-\. \/]*")(\s+as\s+([a-zA-Z$_]\w*))?$`)
 
-func (s *scanner) scanImportModule() *token {
+func (s *scanner) scanImportModule() gadparser.PToken {
 	if sm := rgxImportModule.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokImportModule, Value: sm[1], Data: map[string]string{
-			"ident": sm[3],
-		}}
+		pt := s.newToken(giomtoken.ImportModule, sm[0], sm[1])
+		pt.Set("ident", sm[3])
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxSlot = regexp.MustCompile(`^@slot\s+([a-zA-Z_-]+\w*)(\((.*)\))?$`)
-var rgxWrap = regexp.MustCompile(`^@wrap\s*$`)
 
-func (s *scanner) scanSlot() *token {
-	if sm := rgxSlot.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{Kind: tokSlot, Value: sm[1], Data: map[string]string{"Args": sm[3]}}
+func (s *scanner) readBalanced(start int, open, close byte) (string, int, bool) {
+	if start >= len(s.buffer) || s.buffer[start] != open {
+		return "", start, false
 	}
-
-	if sm := rgxWrap.FindString(s.buffer); len(sm) != 0 {
-		s.consume(len(sm))
-		return &token{Kind: tokWrap}
+	depth := 0
+	inString := byte(0)
+	escaped := false
+	for i := start; i < len(s.buffer); i++ {
+		c := s.buffer[i]
+		if inString != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == inString {
+				inString = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			inString = c
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return s.buffer[start : i+1], i + 1, true
+			}
+		}
 	}
+	return "", start, false
+}
 
-	return nil
+func (s *scanner) scanSlot() gadparser.PToken {
+	if strings.TrimSpace(s.buffer) == "@wrap" {
+		line := s.buffer
+		s.consume(len(line))
+		return s.newToken(giomtoken.Wrap, line, "")
+	}
+	if !strings.HasPrefix(s.buffer, "@slot ") || strings.HasPrefix(s.buffer, "@slot #") {
+		return gadparser.PToken{}
+	}
+	line := s.buffer
+	i := len("@slot ")
+	j := i
+	for j < len(line) {
+		c := line[j]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			j++
+			continue
+		}
+		break
+	}
+	if j == i {
+		return gadparser.PToken{}
+	}
+	name := line[i:j]
+	rest := strings.TrimSpace(line[j:])
+	args := ""
+	consumed := j
+	if rest != "" {
+		if j >= len(line) || line[j] != '(' {
+			return gadparser.PToken{}
+		}
+		balanced, end, ok := s.readBalanced(j, '(', ')')
+		if !ok {
+			return gadparser.PToken{}
+		}
+		args = balanced[1 : len(balanced)-1]
+		if strings.TrimSpace(line[end:]) != "" {
+			return gadparser.PToken{}
+		}
+		consumed = len(line)
+	}
+	lit := line[:consumed]
+	s.consume(consumed)
+	pt := s.newToken(giomtoken.Slot, lit, name)
+	pt.Set("args", args)
+	return pt
 }
 
 var rgxSlotPass = regexp.MustCompile(`^@slot\s+#(.+)$`)
 
-func (s *scanner) scanSlotPass() *token {
+func (s *scanner) scanSlotPass() gadparser.PToken {
 	if sm := rgxSlotPass.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokSlotPass, Value: sm[1], Data: map[string]string{"Header": sm[1]}}
+		pt := s.newToken(giomtoken.SlotPass, sm[0], sm[1])
+		pt.Set("header", sm[1])
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
-
-var rgxInit = regexp.MustCompile(`^~~~\s*$`)
 
 var rgxTag = regexp.MustCompile(`^(\w[-:/\w]*)`)
 
-func (s *scanner) scanTag() *token {
+func (s *scanner) scanTag() gadparser.PToken {
 	if sm := rgxTag.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokTag, Value: sm[1]}
+		return s.newToken(giomtoken.Tag, sm[0], sm[1])
 	}
-
-	return nil
-}
-
-var rgxExit = regexp.MustCompile(`^@return\s*?$`)
-
-func (s *scanner) scanExit() *token {
-	if sm := rgxExit.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{Kind: scnEOF}
-	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxExport = regexp.MustCompile(`^@export\s+([a-zA-Z_]\w*)(\s*=\s*(.+))?$`)
 
-func (s *scanner) scanExport() *token {
+func (s *scanner) scanExport() gadparser.PToken {
 	if sm := rgxExport.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokExport, Value: sm[1], Data: map[string]string{"Name": sm[1], "Value": sm[3]}}
+		pt := s.newToken(giomtoken.Export, sm[0], sm[1])
+		pt.Set("name", sm[1])
+		pt.Set("value", sm[3])
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxFunc = regexp.MustCompile(`^@(export\s+)?func ([a-zA-Z_-]+\w*)(\((.*)\))?$`)
 
-func (s *scanner) scanFunc() *token {
-	if sm := rgxFunc.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{Kind: tokFunc, Value: sm[2], Data: map[string]string{"Args": sm[4], "Exported": fmt.Sprint(len(sm[1]) > 0)}}
+func (s *scanner) scanFunc() gadparser.PToken {
+	line := s.buffer
+	exported := false
+	prefix := "@func "
+	if strings.HasPrefix(line, "@export func ") {
+		exported = true
+		prefix = "@export func "
+	} else if !strings.HasPrefix(line, prefix) {
+		return gadparser.PToken{}
 	}
-	return nil
+
+	i := len(prefix)
+	j := i
+	for j < len(line) {
+		c := line[j]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			j++
+			continue
+		}
+		break
+	}
+	if j == i {
+		return gadparser.PToken{}
+	}
+	name := line[i:j]
+	rest := strings.TrimSpace(line[j:])
+	args := ""
+	consumed := j
+	if rest != "" {
+		if j >= len(line) || line[j] != '(' {
+			return gadparser.PToken{}
+		}
+		balanced, end, ok := s.readBalanced(j, '(', ')')
+		if !ok {
+			return gadparser.PToken{}
+		}
+		args = balanced[1 : len(balanced)-1]
+		if strings.TrimSpace(line[end:]) != "" {
+			return gadparser.PToken{}
+		}
+		consumed = len(line)
+	}
+	lit := line[:consumed]
+	s.consume(consumed)
+	pt := s.newToken(giomtoken.Func, lit, name)
+	pt.Set("args", args)
+	pt.Set("exported", fmt.Sprint(exported))
+	return pt
 }
 
 var rgxComp = regexp.MustCompile(`^@(export\s+)?comp ([a-zA-Z_-]+\w*)(\((.*)\))?$`)
 var rgxMainComp = regexp.MustCompile(`^@main\s*(\((.*)\))?$`)
 
-func (s *scanner) scanComp() *token {
-	if sm := rgxComp.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{Kind: tokComp, Value: sm[2], Data: map[string]string{"Args": sm[4], "Exported": fmt.Sprint(len(sm[1]) > 0)}}
+func (s *scanner) scanComp() gadparser.PToken {
+	line := s.buffer
+	if strings.HasPrefix(line, "@main") {
+		rest := strings.TrimSpace(line[len("@main"):])
+		args := ""
+		consumed := len("@main")
+		if rest != "" {
+			if consumed >= len(line) || line[consumed] != ' ' {
+				return gadparser.PToken{}
+			}
+			start := consumed
+			for start < len(line) && line[start] == ' ' {
+				start++
+			}
+			if start >= len(line) || line[start] != '(' {
+				return gadparser.PToken{}
+			}
+			balanced, end, ok := s.readBalanced(start, '(', ')')
+			if !ok {
+				return gadparser.PToken{}
+			}
+			args = balanced[1 : len(balanced)-1]
+			if strings.TrimSpace(line[end:]) != "" {
+				return gadparser.PToken{}
+			}
+			consumed = len(line)
+		}
+		lit := line[:consumed]
+		s.consume(consumed)
+		pt := s.newToken(giomtoken.Comp, lit, "main")
+		pt.Set("args", args)
+		pt.Set("exported", "true")
+		return pt
 	}
-	if sm := rgxMainComp.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{Kind: tokComp, Value: "main", Data: map[string]string{"Args": sm[2], "Exported": "true"}}
+
+	exported := false
+	prefix := "@comp "
+	if strings.HasPrefix(line, "@export comp ") {
+		exported = true
+		prefix = "@export comp "
+	} else if !strings.HasPrefix(line, prefix) {
+		return gadparser.PToken{}
 	}
-	return nil
+
+	i := len(prefix)
+	j := i
+	for j < len(line) {
+		c := line[j]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			j++
+			continue
+		}
+		break
+	}
+	if j == i {
+		return gadparser.PToken{}
+	}
+	name := line[i:j]
+	rest := strings.TrimSpace(line[j:])
+	args := ""
+	consumed := j
+	if rest != "" {
+		if j >= len(line) || line[j] != '(' {
+			return gadparser.PToken{}
+		}
+		balanced, end, ok := s.readBalanced(j, '(', ')')
+		if !ok {
+			return gadparser.PToken{}
+		}
+		args = balanced[1 : len(balanced)-1]
+		if strings.TrimSpace(line[end:]) != "" {
+			return gadparser.PToken{}
+		}
+		consumed = len(line)
+	}
+	lit := line[:consumed]
+	s.consume(consumed)
+	pt := s.newToken(giomtoken.Comp, lit, name)
+	pt.Set("args", args)
+	pt.Set("exported", fmt.Sprint(exported))
+	return pt
 }
 
 var rgxSwitch = regexp.MustCompile(`^@switch\s+(\S+)\s*$`)
 
-func (s *scanner) scanSwitch() *token {
+func (s *scanner) scanSwitch() gadparser.PToken {
 	if sm := rgxSwitch.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokSwitch, Value: sm[1]}
+		return s.newToken(giomtoken.Switch, sm[0], sm[1])
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxCase = regexp.MustCompile(`^@case\s+(.+)\s*$`)
 
-func (s *scanner) scanCase() *token {
+func (s *scanner) scanCase() gadparser.PToken {
 	if sm := rgxCase.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokCase, Value: sm[1]}
+		return s.newToken(giomtoken.Case, sm[0], sm[1])
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxDefault = regexp.MustCompile(`^@default\s*$`)
 
-func (s *scanner) scanDefault() *token {
+func (s *scanner) scanDefault() gadparser.PToken {
 	if sm := rgxDefault.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return &token{Kind: tokDefault}
+		return s.newToken(giomtoken.Default, sm[0], "")
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
 var rgxCompCall = regexp.MustCompile(`^\+([@\$A-Za-z_-]+[.\w]*)(\((.*)\)\s*(~?))?$`)
 
-func (s *scanner) scanCompCall() *token {
-	if sm := rgxCompCall.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return &token{
-			Kind:  tokCompCall,
-			Value: sm[1],
-			Data: map[string]string{
-				"Args":     sm[3],
-				"WithCode": fmt.Sprint(sm[4] == "~"),
-			},
-		}
+func (s *scanner) scanCompCall() gadparser.PToken {
+	if !strings.HasPrefix(s.buffer, "+") {
+		return gadparser.PToken{}
 	}
-
-	return nil
+	line := s.buffer
+	i := 1
+	j := i
+	for j < len(line) {
+		c := line[j]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '$' || c == '@' || c == '.' {
+			j++
+			continue
+		}
+		break
+	}
+	if j == i {
+		return gadparser.PToken{}
+	}
+	name := line[i:j]
+	rest := strings.TrimSpace(line[j:])
+	args := ""
+	withCode := false
+	consumed := j
+	if rest != "" {
+		if j >= len(line) || line[j] != '(' {
+			return gadparser.PToken{}
+		}
+		balanced, end, ok := s.readBalanced(j, '(', ')')
+		if !ok {
+			return gadparser.PToken{}
+		}
+		args = balanced[1 : len(balanced)-1]
+		tail := strings.TrimSpace(line[end:])
+		switch tail {
+		case "":
+		case "~":
+			withCode = true
+		default:
+			return gadparser.PToken{}
+		}
+		consumed = len(line)
+	}
+	lit := line[:consumed]
+	s.consume(consumed)
+	pt := s.newToken(giomtoken.CompCall, lit, name)
+	pt.Set("args", args)
+	pt.Set("withCode", fmt.Sprint(withCode))
+	return pt
 }
 
 var rgxText = regexp.MustCompile(`^(\|)? ?(.*)$`)
 
-func (s *scanner) scanText() *token {
+func (s *scanner) scanText() gadparser.PToken {
 	if sm := rgxText.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-
 		mode := "inline"
 		if sm[1] == "|" {
 			mode = "piped"
 		}
-
-		return &token{Kind: tokText, Value: sm[2], Data: map[string]string{"Mode": mode}}
+		pt := s.newToken(giomtoken.Text, sm[0], sm[2])
+		pt.Set("mode", mode)
+		return pt
 	}
-
-	return nil
+	return gadparser.PToken{}
 }
 
-// Moves position forward, and removes beginning of s.buffer (len bytes)
+// =============================================================================
+// Raw text mode (for <script>, <style> content)
+// =============================================================================
+
+func (s *scanner) NextRaw() gadparser.PToken {
+	result := ""
+	level := 0
+
+	for {
+		s.ensureBuffer()
+
+		switch s.state {
+		case giomtoken.ScnEOF:
+			pt := s.newToken(giomtoken.Text, result, result)
+			pt.Set("mode", "raw")
+			return pt
+
+		case giomtoken.ScnNewLine:
+			s.state = giomtoken.ScnLine
+
+			if tok := s.scanIndent(); tok.Valid() {
+				if tok.Token == giomtoken.Indent {
+					level++
+				} else if tok.Token == giomtoken.Outdent {
+					level--
+				} else {
+					result += "\n"
+					continue
+				}
+
+				if level < 0 {
+					s.stash.PushBack(s.newToken(giomtoken.Outdent, "", ""))
+					if len(result) > 0 && result[len(result)-1] == '\n' {
+						result = result[:len(result)-1]
+					}
+					pt := s.newToken(giomtoken.Text, result, result)
+					pt.Set("mode", "raw")
+					return pt
+				}
+			}
+
+		case giomtoken.ScnLine:
+			if len(result) > 0 {
+				result += "\n"
+			}
+			for i := 0; i < level; i++ {
+				result += "\t"
+			}
+			result += s.buffer
+			s.consume(len(s.buffer))
+		}
+	}
+}
+
+func (s *scanner) NextRawCode(eof string) (lines []string) {
+	ind := s.Indentation()
+	for {
+		s.ensureBuffer()
+
+		switch s.state {
+		case giomtoken.ScnEOF:
+			return
+		case giomtoken.ScnNewLine:
+			if s.buffer == ind {
+				lines = append(lines, "")
+				s.consume(len(s.buffer))
+			} else {
+				br := []rune(s.buffer)
+				indr := []rune(ind)
+				for len(indr) > 0 && len(br) > 0 {
+					if br[0] == indr[0] {
+						br = br[1:]
+						indr = indr[1:]
+					} else {
+						break
+					}
+				}
+				b := string(br)
+				if b == eof {
+					s.consume(len(s.buffer))
+					return
+				}
+				lines = append(lines, b)
+				s.consume(len(s.buffer))
+			}
+		}
+	}
+}
+
+// =============================================================================
+// Position tracking
+// =============================================================================
+
 func (s *scanner) consume(runes int) {
 	if len(s.buffer) < runes {
 		panic(fmt.Sprintf("Unable to consume %d runes from buffer.", runes))
 	}
-
-	s.lastTokenLine = s.line
-	s.lastTokenCol = s.col
+	s.lastTokenPos = source.Pos(s.file.Base + s.offset - len(s.buffer) - 1)
 	s.lastTokenSize = runes
-
 	s.buffer = s.buffer[runes:]
 	s.col += runes
 }
 
-// Reads string into s.buffer
 func (s *scanner) ensureBuffer() {
 	if len(s.buffer) > 0 {
 		return
 	}
 
 	buf, err := s.reader.ReadString('\n')
-	s.curPos += len(buf)
-	var lq int
+	s.offset += len(buf)
 
 process:
 	if err != nil && err != io.EOF {
 		panic(err)
 	} else if err != nil && len(buf) == 0 {
-		s.state = scnEOF
+		s.state = giomtoken.ScnEOF
 	} else {
-		if buf[len(buf)-1] == '\n' {
+		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
 			buf = buf[:len(buf)-1]
 		}
 
-		if lq = lineQuote(buf); lq >= 0 {
+		if lq := lineQuote(buf); lq >= 0 {
 			var tmp string
 			if tmp, err = s.reader.ReadString('\n'); err == nil || err == io.EOF {
-				s.line += 1
+				s.line++
 				buf = buf[0:lq] + trimLeftSpace(tmp)
 			}
-			s.curPos += len(buf)
+			s.offset += len(buf)
 			goto process
 		}
 
-		s.state = scnNewLine
+		s.state = giomtoken.ScnNewLine
 		s.buffer = buf
-		s.line += 1
+		s.line++
 		s.col = 0
 	}
 }
@@ -800,8 +938,6 @@ func trimLeftSpace(s string) string {
 	for ; start < len(s); start++ {
 		c := s[start]
 		if c >= utf8.RuneSelf {
-			// If we run into a non-ASCII byte, fall back to the
-			// slower unicode-aware method on the remaining bytes
 			return strings.TrimFunc(s[start:], unicode.IsSpace)
 		}
 		if asciiSpace[c] == 0 {
@@ -814,7 +950,7 @@ func trimLeftSpace(s string) string {
 var asciiSpace = [256]uint8{'\t': 1, '\n': 1, '\v': 1, '\f': 1, '\r': 1, ' ': 1}
 
 func lineQuote(s string) (start int) {
-	var l = len(s)
+	l := len(s)
 	if l == 0 {
 		return -1
 	}
@@ -823,3 +959,9 @@ func lineQuote(s string) (start int) {
 	}
 	return -1
 }
+
+// =============================================================================
+// Compile-time interface check
+// =============================================================================
+
+var _ gadparser.ScannerInterface = (*scanner)(nil)

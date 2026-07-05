@@ -2,154 +2,150 @@ package giom
 
 import (
 	"bytes"
-	"io"
-	"sort"
+	"fmt"
 
-	"github.com/gad-lang/giom/parser"
+	"github.com/gad-lang/gad"
+	gp "github.com/gad-lang/gad/parser"
+	"github.com/gad-lang/gad/parser/ast"
+	gnode "github.com/gad-lang/gad/parser/node"
+	"github.com/gad-lang/gad/parser/source"
+	"github.com/gad-lang/gad/token"
+	giomnode "github.com/gad-lang/giom/node"
+	giomparser "github.com/gad-lang/giom/parser"
 )
 
-// Compiler is the main interface of giom Template Engine.
-// It parses giom source and compiles it to GAD code.
-//
-//	compiler := giom.New(root)
-//	err := compiler.Compile(&out)
-type Compiler struct {
-	// Compiler options
-	Options
-	root          *parser.Root
-	indentLevel   int
-	newline       bool
-	writer        *writer
-	tempvarIndex  int
-	exportedComps map[string]*parser.Comp
-	visited       map[uintptr]any
-	exports       map[string]string
+// Compile parses giom v2 source and compiles it to GAD bytecode.
+func Compile(st *gad.SymbolTable, input []byte, opts gad.CompileOptions) (*giomnode.File, *gad.Bytecode, error) {
+	fs := source.NewFileSet()
+	filename := opts.CompilerOptions.ModuleFile
+	if filename == "" {
+		filename = gad.MainName
+	}
+	f := fs.AddFileData(filename, -1, input)
+	p := giomparser.NewParser(f)
+	file, err := p.ParseFile()
+	if err != nil {
+		return nil, nil, err
+	}
+	bc, err := CompileFile(st, &gad.ModuleSpec{ModuleInfo: gad.ModuleInfo{Name: gad.MainName}, Main: true}, file, opts)
+	return file, bc, err
 }
 
-// New creates and initialize a new Compiler.
-func New(root *parser.Root) *Compiler {
-	compiler := new(Compiler)
-	compiler.tempvarIndex = 0
-	compiler.PrettyPrint = true
-	compiler.Options = DefaultOptions
-	compiler.exportedComps = make(map[string]*parser.Comp)
-	compiler.exports = make(map[string]string)
-	compiler.root = root
-
-	return compiler
-}
-
-// Options defines template output behavior.
-type Options struct {
-	// Setting if pretty printing is enabled.
-	// Pretty printing ensures that the output html is properly indented and in human readable form.
-	// If disabled, produced HTML is compact. This might be more suitable in production environments.
-	// Default: true
-	PrettyPrint bool
-	// Setting if line number emitting is enabled
-	// In this form, giom emits line number comments in the output template. It is usable in debugging environments.
-	// Default: false
-	LineNumbers bool
-	// PreCode is GAD source code prepended to the compiled output.
-	PreCode string
-	// FileName is the source file name used in error traces.
-	FileName string
-}
-
-// DirOptions is used to provide options to directory compilation.
-type DirOptions struct {
-	// File extension to match for compilation
-	Ext string
-	// Whether or not to walk subdirectories
-	Recursive bool
-}
-
-// DefaultOptions sets pretty-printing to true and line numbering to false.
-var DefaultOptions = Options{PrettyPrint: true}
-
-// DefaultDirOptions sets expected file extension to ".giom" and recursive search for templates within a directory to true.
-var DefaultDirOptions = DirOptions{".giom", true}
-
-// Compile parses and compiles the supplied giom template string. Write gad gode to out writer.
-func Compile(out io.Writer, input []byte, options Options) (err error) {
-	var (
-		p    = parser.New(bytes.NewBuffer(input))
-		root *parser.Root
-	)
-
-	if root, err = p.Parse(); err != nil {
-		return
+// CompileFile compiles a parsed giom v2 file to GAD bytecode.
+func CompileFile(st *gad.SymbolTable, module *gad.ModuleSpec, file *giomnode.File, opts gad.CompileOptions) (*gad.Bytecode, error) {
+	if st == nil {
+		st = gad.NewSymbolTable(AppendBuiltins(gad.NewBuiltins()).NameSet)
+	}
+	if module == nil {
+		module = &gad.ModuleSpec{ModuleInfo: gad.ModuleInfo{Name: gad.MainName}, Main: true}
+	}
+	if file.InputFile == nil {
+		fs := source.NewFileSet()
+		file.InputFile = fs.AddFileData(module.Name, -1, nil)
 	}
 
-	comp := New(root)
-	comp.Options = options
+	gadFile := &gp.File{InputFile: file.InputFile, Stmts: file.Stmts}
+	compiler := gad.NewCompiler(st, module, file.InputFile, opts)
+	compiler.SetGlobalSymbolsIndex()
+	compiler.FallbackFunc = func(nd ast.Node) error {
+		return compileFallback(compiler, nd)
+	}
 
-	err = comp.Compile(out)
-	return
+	if err := compiler.Compile(gadFile); err != nil {
+		return nil, err
+	}
+	bc := compiler.Bytecode()
+	bc.Main.FuncName = "#main"
+	if bc.Main.NumLocals > 256 {
+		return nil, gad.ErrSymbolLimit
+	}
+	return bc, nil
 }
 
-// CompileToGad parses and compiles the supplied giom template string. Write gad gode to out writer.
-func CompileToGad(out io.Writer, input []byte, options Options) (err error) {
-	var (
-		p    = parser.New(bytes.NewBuffer(input))
-		root *parser.Root
-	)
-
-	if root, err = p.Parse(); err != nil {
-		return
-	}
-
-	comp := New(root)
-	comp.Options = options
-
-	err = NewToGadCompiler(comp).
-		PreCode(options.PreCode).
-		Format(FormatTranspile).
-		Compile(out)
-	return
-}
-
-// Compile compiles the giom AST and writes GAD source code into the given io.Writer.
-func (c *Compiler) Compile(out io.Writer) (err error) {
-	c.writer = &writer{Writer: out}
-	c.visited = map[uintptr]any{}
-	c.visit(c.root)
-
-	c.write("{% export {")
-	var names [][2]string
-	for name, comp := range c.exportedComps {
-		names = append(names, [2]string{name, comp.Name})
-	}
-
-	for name, value := range c.exports {
-		names = append(names, [2]string{name, value})
-	}
-
-	sort.Slice(names, func(i, j int) bool { return names[i][0] < names[j][0] })
-
-	for i, name := range names {
-		if i > 0 {
-			c.write(",")
+func compileFallback(c *gad.Compiler, nd ast.Node) error {
+	switch n := nd.(type) {
+	case *giomnode.File:
+		return compileStmts(c, n.Stmts)
+	case *giomnode.CodeStmt:
+		return compileStmts(c, n.Stmts)
+	case *giomnode.WrapStmt:
+		return compileStmts(c, n.Body)
+	case *giomnode.AssignStmt:
+		return c.Compile(&gnode.AssignStmt{
+			LHS:      []gnode.Expr{n.LHS},
+			RHS:      []gnode.Expr{n.RHS},
+			Token:    assignToken(n.Op),
+			TokenPos: n.NodePos,
+		})
+	case *giomnode.CommentStmt:
+		if n.Silent {
+			return nil
 		}
-		c.write(name[0] + ": " + name[1])
+		return compileRendered(c, n)
+	case *giomnode.FuncDecl,
+		*giomnode.CompDecl,
+		*giomnode.CompCallStmt,
+		*giomnode.SwitchStmt,
+		*giomnode.ExportStmt,
+		*giomnode.SlotDecl,
+		*giomnode.SlotPassStmt,
+		*giomnode.ForStmt,
+		*giomnode.IfStmt,
+		*giomnode.DoctypeStmt,
+		*giomnode.TextStmt,
+		*giomnode.TagStmt:
+		stmt, ok := nd.(gnode.Stmt)
+		if !ok {
+			return fmt.Errorf("giom v2 fallback: %T is not a statement", nd)
+		}
+		return compileStmts(c, giomnode.Convert(gnode.Stmts{stmt}))
+	default:
+		coder, ok := nd.(gnode.Coder)
+		if !ok {
+			return fmt.Errorf("giom v2 fallback: %T is not compilable", nd)
+		}
+		return compileRendered(c, coder)
 	}
-
-	c.write("} %}")
-	c.write("{% return @module %}")
-	return
 }
 
-// CompileString compiles the template and returns the Go Template source.
-// You would not be using this unless debugging / checking the output. Please use Compile
-// method to obtain a template instance directly.
-func (c *Compiler) CompileString() (string, error) {
-	var buf bytes.Buffer
-
-	if err := c.Compile(&buf); err != nil {
-		return "", err
+func compileStmts(c *gad.Compiler, stmts gnode.Stmts) error {
+	for _, stmt := range stmts {
+		if err := c.Compile(stmt); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	result := buf.String()
+func compileRendered(c *gad.Compiler, nd gnode.Coder) error {
+	var buf bytes.Buffer
+	gnode.CodeW(&buf, nd, gnode.CodeWithPrefix("\t"), gnode.CodeFormat())
+	parsed, err := gp.Parse(buf.String(), "", nil, nil)
+	if err != nil {
+		return err
+	}
+	return compileStmts(c, parsed.Stmts)
+}
 
-	return result, nil
+func assignToken(op string) token.Token {
+	switch op {
+	case ":=", ":":
+		return token.Define
+	case "=":
+		return token.Assign
+	case "+=":
+		return token.AddAssign
+	case "-=":
+		return token.SubAssign
+	case "*=":
+		return token.MulAssign
+	case "/=":
+		return token.QuoAssign
+	case "%=":
+		return token.RemAssign
+	case "??=":
+		return token.NullichAssign
+	default:
+		return token.Assign
+	}
 }

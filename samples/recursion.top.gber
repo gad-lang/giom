@@ -1,4 +1,0 @@
-extends recursion.extends.giom
-
-block inner
-    | content

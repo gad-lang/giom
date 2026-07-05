@@ -19,9 +19,8 @@ import (
 	gnode "github.com/gad-lang/gad/parser/node"
 	"github.com/gad-lang/gad/parser/source"
 	giom "github.com/gad-lang/giom"
-	giomv2 "github.com/gad-lang/giom/v2"
-	giomnode "github.com/gad-lang/giom/v2/node"
-	giomparser "github.com/gad-lang/giom/v2/parser"
+	giomnode "github.com/gad-lang/giom/node"
+	giomparser "github.com/gad-lang/giom/parser"
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -31,10 +30,10 @@ import (
 const defaultAddr = ":8080"
 
 type App struct {
-	DB            *gorm.DB
-	Root          string
-	PublicDir     string
-	TranspileDir  string
+	DB           *gorm.DB
+	Root         string
+	PublicDir    string
+	TranspileDir string
 }
 
 type Page struct {
@@ -274,7 +273,7 @@ func (a *App) render(w http.ResponseWriter, name string, model gad.Dict) {
 		a.serverError(w, err)
 		return
 	}
-	_, bc, err := giomv2.Compile(st, []byte(src), gad.CompileOptions{})
+	_, bc, err := giom.Compile(st, []byte(src), gad.CompileOptions{})
 	if err != nil {
 		a.serverError(w, fmt.Errorf("compile %s: %w", name, err))
 		return

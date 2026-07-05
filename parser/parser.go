@@ -2,636 +2,931 @@ package parser
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"strconv"
 	"strings"
 
-	"github.com/gad-lang/gad/parser/node"
+	gadparser "github.com/gad-lang/gad/parser"
+	gnode "github.com/gad-lang/gad/parser/node"
+	"github.com/gad-lang/gad/parser/source"
+	"github.com/gad-lang/gad/token"
+
+	giomnode "github.com/gad-lang/giom/node"
+	giomtoken "github.com/gad-lang/giom/token"
 )
 
+// Parser parses giom template source into AST nodes.
 type Parser struct {
-	scanner      *scanner
-	filename     string
-	currenttoken *token
-	namedBlocks  map[string]*NamedBlock
-	stack        []Node
-	comps        []*Comp
+	file      *source.File
+	Errors    []string
+	scanner   *scanner
+	Token     gadparser.PToken
+	PrevToken gadparser.PToken
+	filename  string
+	comps     []*giomnode.CompDecl
+	compStack []*giomnode.CompDecl
 }
 
-func New(rdr io.Reader) *Parser {
-	p := new(Parser)
-	p.scanner = newScanner(rdr)
-	p.namedBlocks = make(map[string]*NamedBlock)
-	return p
-}
-
-func (p *Parser) SetFilename(filename string) *Parser {
-	p.filename = filename
-	return p
-}
-
-func FileParser(filename string) (*Parser, error) {
-	data, err := os.ReadFile(filename)
-
-	if err != nil {
-		return nil, err
+// NewParser creates a new Parser for the given source file.
+func NewParser(file *source.File) *Parser {
+	p := &Parser{
+		file:    file,
+		scanner: newScanner(file, bytes.NewReader(file.Data.Bytes())),
 	}
-
-	parser := New(bytes.NewReader(data))
-	parser.filename = filename
-	return parser, nil
+	p.Next()
+	return p
 }
 
-func (p *Parser) currentComp() *Comp {
-	for i := len(p.stack) - 1; i >= 0; i-- {
-		switch expr := p.stack[i].(type) {
-		case *Comp:
-			return expr
+// Next advances the scanner and stores the current and previous tokens.
+func (p *Parser) Next() {
+	p.PrevToken = p.Token
+	p.Token = p.scanner.Scan()
+}
+
+// expect checks the current token against the given kinds. If exactly one kind
+// is provided and the token matches, it advances to the next token. If multiple
+// kinds are provided, it checks without advancing. If no kind matches, it panics.
+func (p *Parser) expect(kinds ...token.Token) {
+	for _, kind := range kinds {
+		if p.Token.Token == kind {
+			if len(kinds) == 1 {
+				p.Next()
+			}
+			return
 		}
 	}
-	return nil
+	p.error(fmt.Sprintf("expected %v, got %s (%s)", kinds, giomtoken.String(p.Token.Token), p.Token.Literal))
 }
 
-func (p *Parser) addComp(c *Comp) {
-	pc := p.currentComp()
-	if pc == nil {
-		p.comps = append(p.comps, c)
-	} else {
-		pc.Comps = append(pc.Comps, c)
+func (p *Parser) error(msg string) {
+	p.Errors = append(p.Errors, msg)
+	panic(msg)
+}
+
+// currentComp returns the component at the top of the comp stack, or nil.
+func (p *Parser) currentComp() *giomnode.CompDecl {
+	if len(p.compStack) == 0 {
+		return nil
 	}
+	return p.compStack[len(p.compStack)-1]
 }
 
-func (p *Parser) Parse() (root *Root, err error) {
+// ParseFile parses the entire giom source file into a File AST node.
+func (p *Parser) ParseFile() (_ *giomnode.File, err error) {
 	defer func() {
-		var (
-			pos = p.pos()
-			pe  = &ParseError{
-				Column:      pos.ColNum,
-				Line:        pos.LineNum,
-				TokenLength: pos.TokenLength,
-				Filename:    pos.Filename,
-			}
-		)
-
 		if r := recover(); r != nil {
-			switch t := r.(type) {
-			case string:
-				pe.Err = errors.New(t)
-			case error:
-				pe.Err = t
-			}
-
-			err = pe
-		} else if err != nil {
-			pe.Err = err
-			err = pe
-		}
-	}()
-
-	root = &Root{}
-	p.next()
-
-	for {
-		if p.currenttoken == nil || p.currenttoken.Kind == tokEOF {
-			break
-		}
-
-		if p.currenttoken.Kind == tokBlank {
-			p.next()
-			continue
-		}
-
-		root.push(p.parse())
-	}
-
-	root.Comps = p.comps
-	return
-}
-
-func (p *Parser) pos() SourcePosition {
-	pos := p.scanner.Pos()
-	pos.Filename = p.filename
-	return pos
-}
-
-func (p *Parser) parse() Node {
-	switch p.currenttoken.Kind {
-	case tokDoctype:
-		return p.parseDoctype()
-	case tokComment:
-		return p.parseComment()
-	case tokText:
-		return p.parseText()
-	case tokIf:
-		node := p.parseIf()
-		if node.skips {
-			return nil
-		}
-		return node
-	case tokFor:
-		return p.parseFor()
-	case tokImportModule:
-		return p.parseImportModule()
-	case tokTag:
-		return p.parseTag()
-	case tokAssignment:
-		return p.parseAssignment()
-	case tokCode:
-		return p.parseCode()
-	case tokSlot:
-		return p.parseSlot()
-	case tokSlotPass:
-		return p.parseSlotPass()
-	case tokWrap:
-		return p.parseWrap()
-	case tokIndent:
-		return p.parseBlock(nil)
-	case tokFunc:
-		return p.parseFunc()
-	case tokComp:
-		c := p.parseComp()
-		p.addComp(c)
-		return c
-	case tokCompCall:
-		return p.parseCompCall()
-	case tokSwitch:
-		return p.parseSwitch()
-	case tokExport:
-		return p.parseExport()
-	}
-
-	panic(fmt.Sprintf("Unexpected token: %d", p.currenttoken.Kind))
-}
-
-func (p *Parser) expect(typ ...Kind) *token {
-	for _, r := range typ {
-		if p.currenttoken.Kind == r {
-			curtok := p.currenttoken
-			p.next()
-			return curtok
-		}
-	}
-	panic("Unexpected token `" + p.currenttoken.Kind.String() + "`!")
-}
-
-func (p *Parser) next() {
-	p.currenttoken = p.scanner.Next()
-}
-
-func (p *Parser) parseBlock(parent Node) *Block {
-	p.expect(tokIndent)
-	block := newBlock()
-	block.SourcePosition = p.pos()
-	p.stack = append(p.stack, parent)
-	defer func() {
-		p.stack = p.stack[:len(p.stack)-1]
-	}()
-
-	for {
-		if p.currenttoken == nil || p.currenttoken.Kind == tokEOF || p.currenttoken.Kind == tokOutdent {
-			break
-		}
-
-		if p.currenttoken.Kind == tokBlank {
-			p.next()
-			continue
-		}
-
-		if p.currenttoken.Kind == tokId ||
-			p.currenttoken.Kind == tokClassName ||
-			p.currenttoken.Kind == tokAttribute {
-
-			if tag, ok := parent.(*Tag); ok {
-				attr := p.expect(p.currenttoken.Kind)
-				cond := attr.Data["Condition"]
-
-				switch attr.Kind {
-				case tokId:
-					tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "id", attr.Value, true, false, cond, nil})
-				case tokClassName:
-					tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "class", attr.Value, true, false, cond, nil})
-				case tokAttribute:
-					var elements *node.KeyValueArrayLit
-					if attr.AnyValue != nil {
-						elements = attr.AnyValue.(*node.KeyValueArrayLit)
-					}
-					tag.Attributes = append(tag.Attributes, Attribute{p.pos(), attr.Value, attr.Data["Content"], attr.Data["Mode"] == "raw", false, cond, elements})
-				}
-
-				continue
+			if msg, ok := r.(string); ok {
+				err = fmt.Errorf("parse error: %s", msg)
 			} else {
-				if cond, ok := parent.(*If); ok {
-					if tag, ok := p.stack[len(p.stack)-2].(*Tag); ok {
-						// do not include it as block
-						cond.skips = true
-
-						attr := p.expect(p.currenttoken.Kind)
-						expr := cond.Positives[0].Expression
-						if cond.Positives[0] != nil {
-							expr = "!(" + expr + ")"
-						}
-						switch attr.Kind {
-						case tokId:
-							tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "id", attr.Value, true, false, expr, nil})
-						case tokClassName:
-							tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "class", attr.Value, true, false, expr, nil})
-						case tokAttribute:
-							var elements *node.KeyValueArrayLit
-							if attr.AnyValue != nil {
-								elements = attr.AnyValue.(*node.KeyValueArrayLit)
-							}
-							tag.Attributes = append(tag.Attributes, Attribute{p.pos(), attr.Value, attr.Data["Content"], attr.Data["Mode"] == "raw", false, expr, elements})
-						}
-
-						continue
-					}
-				}
-				panic("Conditional attributes must be placed immediately within a parent tag.")
+				err = fmt.Errorf("parse error: %v", r)
 			}
 		}
+	}()
 
-		block.push(p.parse())
+	file := &giomnode.File{
+		InputFile: p.scanner.SourceFile(),
 	}
 
-	p.expect(tokOutdent)
+	for p.Token.Token != giomtoken.EOF && p.Token.Token != token.Illegal {
+		stmt := p.parseStmt()
+		if stmt != nil {
+			file.Stmts = append(file.Stmts, stmt)
+		}
+	}
 
-	return block
+	file.Comps = p.comps
+	return file, nil
 }
 
-func (p *Parser) parseIf() *If {
-	condTok := p.expect(tokIf)
-	cnd := &If{
-		SourcePosition: p.pos(),
-	}
+// =============================================================================
+// Statement parsing
+// =============================================================================
 
-	pos := &Condition{
-		SourcePosition: p.pos(),
-		Expression:     condTok.Value,
+// parseStmt dispatches to the appropriate parse function based on the current token.
+func (p *Parser) parseStmt() gnode.Stmt {
+	switch p.Token.Token {
+	case giomtoken.Doctype:
+		return p.parseDoctype()
+	case giomtoken.Comment:
+		return p.parseComment()
+	case giomtoken.Text:
+		return p.parseText()
+	case giomtoken.Tag:
+		return p.parseTag()
+	case giomtoken.Id, giomtoken.ClassName, giomtoken.Attribute:
+		return p.parseTag()
+	case giomtoken.If:
+		return p.parseIf()
+	case giomtoken.ElseIf, giomtoken.Else:
+		p.error(fmt.Sprintf("unexpected %s without matching @if", giomtoken.String(p.Token.Token)))
+		return nil
+	case giomtoken.For:
+		return p.parseFor()
+	case giomtoken.Assignment:
+		return p.parseAssignment()
+	case giomtoken.Code:
+		return p.parseCode()
+	case giomtoken.ImportModule:
+		return p.parseImportModule()
+	case giomtoken.Func:
+		return p.parseFunc()
+	case giomtoken.Comp:
+		return p.parseComp()
+	case giomtoken.Slot:
+		return p.parseSlot()
+	case giomtoken.SlotPass:
+		return p.parseSlotPass()
+	case giomtoken.Wrap:
+		return p.parseWrap()
+	case giomtoken.CompCall:
+		return p.parseCompCall()
+	case giomtoken.Switch:
+		return p.parseSwitch()
+	case giomtoken.Case, giomtoken.Default:
+		p.error(fmt.Sprintf("unexpected %s without matching @switch", giomtoken.String(p.Token.Token)))
+		return nil
+	case giomtoken.Export:
+		return p.parseExport()
+	case giomtoken.Blank:
+		p.Next()
+		return nil
+	case giomtoken.Outdent, giomtoken.EOF:
+		return nil
+	default:
+		p.error(fmt.Sprintf("unexpected token: %s (%s)", giomtoken.String(p.Token.Token), p.Token.Literal))
+		return nil
 	}
-
-	if p.currenttoken.Kind == tokIndent {
-		pos.Block = p.parseBlock(pos)
-	}
-	cnd.Positives = append(cnd.Positives, pos)
-
-readmore:
-	switch p.currenttoken.Kind {
-	case tokIndent:
-		if cnd.skips && pos.Block != nil && len(pos.Block.Children) > 0 {
-			panic("Conditional for tag attributes does not accepts children on Positive Block.")
-		}
-		goto readmore
-	case tokElseIf:
-		tok := p.expect(tokElseIf)
-		pos = &Condition{
-			SourcePosition: p.pos(),
-			Expression:     tok.Value,
-		}
-		if p.currenttoken.Kind == tokIndent {
-			pos.Block = p.parseBlock(pos)
-		}
-		cnd.Positives = append(cnd.Positives, pos)
-		goto readmore
-	case tokElse:
-		p.expect(tokElse)
-		if p.currenttoken.Kind == tokIndent {
-			cnd.Negative = p.parseBlock(pos)
-		}
-		if cnd.skips && cnd.Negative != nil && len(cnd.Negative.Children) > 0 {
-			panic("Conditional for tag attributes does not accepts children on Negative Block.")
-		}
-		goto readmore
-	}
-
-	return cnd
 }
 
-func (p *Parser) parseFor() *For {
-	tok := p.expect(tokFor)
-	ech := newFor(tok.Value)
-	ech.SourcePosition = p.pos()
+// parseBlock parses an indented block of statements. It expects the current
+// token to be Indent, consumes statements until Outdent, and returns them.
+func (p *Parser) parseBlock(parent gnode.Stmt) gnode.Stmts {
+	p.expect(giomtoken.Indent)
 
-readmore:
-	switch p.currenttoken.Kind {
-	case tokIndent:
-		ech.Block = p.parseBlock(ech)
-		goto readmore
-	case tokElse:
-		p.expect(tokElse)
-		if p.currenttoken.Kind == tokIndent {
-			ech.Else = p.parseBlock(ech)
-		} else {
-			panic("Unexpected token!")
+	var stmts gnode.Stmts
+	for p.Token.Token != giomtoken.Outdent && p.Token.Token != giomtoken.EOF {
+		stmt := p.parseStmt()
+		if stmt != nil {
+			stmts = append(stmts, stmt)
 		}
 	}
 
-	return ech
+	p.expect(giomtoken.Outdent)
+	return stmts
 }
 
-func (p *Parser) parseImportModule() *Code {
-	tok := p.expect(tokImportModule)
-	ident := tok.Data["ident"]
-	node := &Code{
-		Expressions: []string{
-			"const " + ident + " = import(" + strconv.Quote(tok.Value[1:len(tok.Value)-1]+".giom") + ")",
-		}}
-	node.SourcePosition = p.pos()
-	return node
+// =============================================================================
+// Parse functions for specific constructs
+// =============================================================================
+
+func (p *Parser) parseDoctype() *giomnode.DoctypeStmt {
+	tok := p.Token
+	p.expect(giomtoken.Doctype)
+
+	value := stringData(tok, "value", "html")
+	d := &giomnode.DoctypeStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Value:   value,
+	}
+	return d
 }
 
-func (p *Parser) parseSlot() (s *Slot) {
-	var (
-		tok = p.expect(tokSlot)
-		c   = mustParseFirstStmt("func _("+ensureFnParamSep(tok.Data["Args"])+"){}", false)
-	)
+func (p *Parser) parseComment() *giomnode.CommentStmt {
+	tok := p.Token
+	p.expect(giomtoken.Comment)
 
-	s = &Slot{
-		SourcePosition: p.pos(),
-		Name:           tok.Value,
-		Scope:          &c.(*node.FuncStmt).Func.Type.Params,
-		ID:             strings.ReplaceAll(tok.Value, "-", "__"),
+	mode := stringData(tok, "mode", "embed")
+	text := stringData(tok, "value", "")
+
+	c := &giomnode.CommentStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Text:    text,
+		Silent:  mode == "silent",
 	}
 
-	p.currentComp().Slots = append(p.currentComp().Slots, s)
-
-	if p.currenttoken.Kind == tokIndent {
-		s.Block = p.parseBlock(s)
-		if len(s.Block.Children) > 0 {
-			if w, ok := s.Block.Children[0].(*Wrap); ok {
-				s.Block.Children = s.Block.Children[1:]
-				s.Wrap = w
-			}
-		}
-	}
-	return
-}
-
-func (p *Parser) parseWrap() (w *Wrap) {
-	p.expect(tokWrap)
-	w = &Wrap{
-		SourcePosition: p.pos(),
-	}
-	w.Block = p.parseBlock(w)
-	return
-}
-
-func (p *Parser) parseSlotPass() (s *SlotPass) {
-	var (
-		tok     = p.expect(tokSlotPass)
-		c       = mustParseFirstStmt(tok.Data["Header"], false).(*node.ExprStmt).Expr.(*node.CallExpr)
-		ft, err = c.CallArgs.ToFuncParams()
-	)
-
-	if err != nil {
-		panic(fmt.Errorf("Parsing slot pass failed: %v", err))
-	}
-
-	s = &SlotPass{
-		SourcePosition: p.pos(),
-		Name:           c.Func,
-		FuncType: &node.FuncType{
-			FuncHeader: node.FuncHeader{Params: *ft},
-		},
-	}
-
-	if p.currenttoken.Kind == tokIndent {
-		s.Block = p.parseBlock(s)
-	}
-	return
-}
-
-func (p *Parser) parseDoctype() *Doctype {
-	tok := p.expect(tokDoctype)
-	node := newDoctype(tok.Value)
-	node.SourcePosition = p.pos()
-	return node
-}
-
-func (p *Parser) parseComment() *Comment {
-	tok := p.expect(tokComment)
-	cmnt := newComment(tok.Value)
-	cmnt.SourcePosition = p.pos()
-	cmnt.Silent = tok.Data["Mode"] == "silent"
-
-	if p.currenttoken.Kind == tokIndent {
-		cmnt.Block = p.parseBlock(cmnt)
-	}
-
-	return cmnt
-}
-
-func (p *Parser) parseText() *Text {
-	tok := p.expect(tokText)
-	stmts, err := parse(tok.Value, true)
-	if err != nil {
-		panic(err)
-	}
-	node := newText(stmts)
-	node.SourcePosition = p.pos()
-	return node
-}
-
-func (p *Parser) parseAssignment() *Assignment {
-	tok := p.expect(tokAssignment)
-	node := newAssignment(tok.Data["X"], tok.Data["Op"], tok.Value)
-	node.SourcePosition = p.pos()
-	return node
-}
-
-func (p *Parser) parseCode() *Code {
-	tok := p.expect(tokCode)
-	node := newCode(tok.Values)
-	node.SourcePosition = p.pos()
-	return node
-}
-
-func (p *Parser) parseTag() *Tag {
-	tok := p.expect(tokTag)
-	tag := newTag(tok.Value)
-	tag.SourcePosition = p.pos()
-
-	ensureBlock := func() {
-		if tag.Block == nil {
-			tag.Block = newBlock()
+	if p.Token.Token == giomtoken.Indent {
+		c.Body = p.parseBlock(c)
+		if len(c.Body) > 0 {
+			c.NodeEnd = c.Body[len(c.Body)-1].End()
 		}
 	}
 
-readmore:
-	switch p.currenttoken.Kind {
-	case tokIndent:
-		if tag.IsRawText() {
-			p.scanner.readRaw = true
-		}
+	return c
+}
 
-		block := p.parseBlock(tag)
-		if tag.Block == nil {
-			tag.Block = block
-		} else {
-			for _, c := range block.Children {
-				tag.Block.push(c)
-			}
-		}
-	case tokId:
-		id := p.expect(tokId)
-		if len(id.Data["Condition"]) > 0 {
-			panic("Conditional attributes must be placed in a block within a tag.")
-		}
-		tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "id", id.Value, true, false, "", nil})
-		goto readmore
-	case tokClassName:
-		cls := p.expect(tokClassName)
-		if len(cls.Data["Condition"]) > 0 {
-			panic("Conditional attributes must be placed in a block within a tag.")
-		}
-		tag.Attributes = append(tag.Attributes, Attribute{p.pos(), "class", cls.Value, true, false, "", nil})
-		goto readmore
-	case tokAttribute:
-		attr := p.expect(tokAttribute)
-		if len(attr.Data["Condition"]) > 0 {
-			panic("Conditional attributes must be placed in a block within a tag.")
-		}
+func (p *Parser) parseText() *giomnode.TextStmt {
+	tok := p.Token
+	p.expect(giomtoken.Text)
 
-		var elements *node.KeyValueArrayLit
-		if attr.AnyValue != nil {
-			elements = attr.AnyValue.(*node.KeyValueArrayLit)
+	content := stringData(tok, "value", "")
+
+	t := &giomnode.TextStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+	}
+
+	if content != "" {
+		stmts, err := parseTextGad(content)
+		if err == nil {
+			t.Stmts = stmts
 		}
-		tag.Attributes = append(tag.Attributes, Attribute{p.pos(), attr.Value, attr.Data["Content"], attr.Data["Mode"] == "raw", attr.Data["Flag"] == "true", "", elements})
-		goto readmore
-	case tokText:
-		if p.currenttoken.Data["Mode"] != "piped" {
-			ensureBlock()
-			tag.Block.pushFront(p.parseText())
-			goto readmore
+	}
+
+	return t
+}
+
+func (p *Parser) parseTag() *giomnode.TagStmt {
+	tok := p.Token
+	p.expect(giomtoken.Tag)
+
+	name := stringData(tok, "value", tok.Literal)
+
+	tag := &giomnode.TagStmt{
+		NodePos: tok.Pos,
+		Name:    name,
+	}
+
+	// Consume inline attributes (id, class, [attr])
+	for p.Token.Token == giomtoken.Id ||
+		p.Token.Token == giomtoken.ClassName ||
+		p.Token.Token == giomtoken.Attribute {
+		attr := p.parseInlineAttribute()
+		if attr != nil {
+			tag.Attributes = append(tag.Attributes, attr)
 		}
+	}
+
+	tag.SelfClosing = giomnode.IsSelfClosing(name)
+
+	if p.Token.Token == giomtoken.Indent {
+		tag.Body = p.parseBlock(tag)
+	} else if p.Token.Token == giomtoken.Text {
+		tag.Body = gnode.Stmts{p.parseText()}
+	}
+
+	if len(tag.Body) > 0 {
+		tag.NodeEnd = tag.Body[len(tag.Body)-1].End()
+	} else {
+		tag.NodeEnd = tok.Pos + source.Pos(len(tok.Literal))
 	}
 
 	return tag
 }
 
-func (p *Parser) parseFunc() *Func {
-	tok := p.expect(tokFunc)
-	c := mustParseFirstStmt("func _("+ensureFnParamSep(tok.Data["Args"])+"){}", false)
-	f := &Func{
-		Name:           tok.Value,
-		Params:         &c.(*node.FuncStmt).Func.Type.Params,
-		Exported:       tok.Data["Exported"] == "true",
-		SourcePosition: p.pos(),
+func (p *Parser) parseInlineAttribute() *giomnode.TagAttribute {
+	tok := p.Token
+	switch tok.Token {
+	case giomtoken.Id:
+		p.expect(giomtoken.Id)
+		attr := &giomnode.TagAttribute{
+			Name:  "id",
+			Value: gnode.Str(stringData(tok, "value", ""), tok.Pos),
+		}
+		if cond := stringData(tok, "condition", ""); cond != "" {
+			attr.Condition = parseExprStr(cond, tok.Pos)
+		}
+		return attr
+	case giomtoken.ClassName:
+		p.expect(giomtoken.ClassName)
+		attr := &giomnode.TagAttribute{
+			Name:  "class",
+			Value: gnode.Str(stringData(tok, "value", ""), tok.Pos),
+		}
+		if cond := stringData(tok, "condition", ""); cond != "" {
+			attr.Condition = parseExprStr(cond, tok.Pos)
+		}
+		return attr
+	default:
+		p.expect(giomtoken.Attribute)
+		return p.parseAttribute(tok)
+	}
+}
+
+func (p *Parser) parseIf() *giomnode.IfStmt {
+	tok := p.Token
+	p.expect(giomtoken.If)
+
+	condStr := stringData(tok, "value", "")
+
+	s := &giomnode.IfStmt{
+		NodePos: tok.Pos,
+		Cond:    parseExprStr(condStr, tok.Pos),
 	}
 
-	if p.currenttoken.Kind == tokIndent {
-		f.Block = p.parseBlock(f)
+	if p.Token.Token == giomtoken.Indent {
+		s.Body = p.parseBlock(s)
+	}
+
+	// Handle optional else-ifs and else
+	for p.Token.Token == giomtoken.ElseIf {
+		elseIfTok := p.Token
+		p.expect(giomtoken.ElseIf)
+		clause := &giomnode.ElseIfClause{
+			Cond: parseExprStr(stringData(elseIfTok, "value", ""), elseIfTok.Pos),
+		}
+		if p.Token.Token == giomtoken.Indent {
+			clause.Body = p.parseBlock(s)
+		}
+		s.ElseIfs = append(s.ElseIfs, clause)
+	}
+
+	if p.Token.Token == giomtoken.Else {
+		p.expect(giomtoken.Else)
+		if p.Token.Token == giomtoken.Indent {
+			s.Else = p.parseBlock(s)
+		}
+	}
+
+	s.NodeEnd = bodyEndIf(s)
+	return s
+}
+
+func (p *Parser) parseFor() *giomnode.ForStmt {
+	tok := p.Token
+	p.expect(giomtoken.For)
+
+	condStr := stringData(tok, "value", "")
+
+	s := &giomnode.ForStmt{
+		NodePos: tok.Pos,
+		Cond:    parseExprStr(condStr, tok.Pos),
+	}
+
+	if p.Token.Token == giomtoken.Indent {
+		s.Body = p.parseBlock(s)
+	}
+
+	if p.Token.Token == giomtoken.Else {
+		p.expect(giomtoken.Else)
+		if p.Token.Token == giomtoken.Indent {
+			s.Else = p.parseBlock(s)
+		}
+	}
+
+	s.NodeEnd = bodyEndFor(s)
+	return s
+}
+
+func (p *Parser) parseAssignment() *giomnode.AssignStmt {
+	tok := p.Token
+	p.expect(giomtoken.Assignment)
+
+	x := stringData(tok, "x", "")
+	op := stringData(tok, "op", "")
+	valueStr := stringData(tok, "value", "")
+
+	s := &giomnode.AssignStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Op:      op,
+		RHS:     parseExprStr(valueStr, tok.Pos),
+	}
+
+	if x != "" {
+		s.LHS = gnode.EIdent(x, tok.Pos)
+	}
+
+	return s
+}
+
+func (p *Parser) parseCode() *giomnode.CodeStmt {
+	tok := p.Token
+	p.expect(giomtoken.Code)
+
+	s := &giomnode.CodeStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+	}
+
+	if values, ok := tok.GetOk("values"); ok {
+		switch v := values.(type) {
+		case []string:
+			// Multi-line code (~~) — join lines and parse as full GAD source
+			if tok.Literal == "" {
+				joined := strings.Join(v, "\n")
+				if trimmed := strings.TrimSpace(joined); trimmed != "" {
+					stmts, err := parseGad(trimmed, p.scanner.SourceFile(), false)
+					if err == nil {
+						s.Stmts = stmts
+					}
+				}
+				if s.Stmts != nil && len(s.Stmts) > 0 {
+					s.NodeEnd = s.Stmts[len(s.Stmts)-1].End()
+				}
+				return s
+			}
+			// Single-line code (~) — parse each value as individual statement
+			for _, line := range v {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					stmt, err := parseGadFirstStmt(line, nil, false)
+					if err == nil {
+						s.Stmts = append(s.Stmts, stmt)
+					}
+				}
+			}
+		}
+	}
+
+	return s
+}
+
+func (p *Parser) parseImportModule() *giomnode.CodeStmt {
+	tok := p.Token
+	p.expect(giomtoken.ImportModule)
+
+	path := stringData(tok, "value", "")
+	ident := stringData(tok, "ident", "")
+
+	var gadSrc string
+	if ident != "" {
+		gadSrc = fmt.Sprintf("const %s = import(%s)", ident, path)
+	} else {
+		gadSrc = fmt.Sprintf("import(%s)", path)
+	}
+
+	stmt, err := parseGadFirstStmt(gadSrc, nil, false)
+	s := &giomnode.CodeStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+	}
+
+	if err == nil && stmt != nil {
+		s.Stmts = gnode.Stmts{stmt}
+	}
+
+	return s
+}
+
+// =============================================================================
+// Function and component parameter parsing
+// =============================================================================
+
+// parseFuncParams parses function parameters from an args string.
+func (p *Parser) parseFuncParams(argsStr string, pos source.Pos) *gnode.FuncParams {
+	params, err := parseFuncParamsString(argsStr)
+	if err != nil {
+		panic(fmt.Errorf("parsing func params failed: %v", err))
+	}
+	return params
+}
+
+// parseCompParams parses component parameters from an args string.
+func (p *Parser) parseCompParams(argsStr string, pos source.Pos) *gnode.FuncParams {
+	params, err := parseFuncParamsString(argsStr)
+	if err != nil {
+		panic(fmt.Errorf("parsing comp params failed: %v", err))
+	}
+	return params
+}
+
+// =============================================================================
+// Surviving content below — preserved exactly as-is
+// =============================================================================
+
+func (p *Parser) parseAttribute(pt gadparser.PToken) *giomnode.TagAttribute {
+	name := stringData(pt, "value", pt.Literal)
+	mode := stringData(pt, "mode", "")
+	content := stringData(pt, "content", "")
+	isFlag := stringData(pt, "flag", "") == "true"
+
+	attr := &giomnode.TagAttribute{
+		Name:   name,
+		IsRaw:  mode == "raw",
+		IsFlag: isFlag,
+	}
+	if content != "" {
+		if attr.IsRaw {
+			attr.Value = gnode.Str(content, pt.Pos)
+		} else {
+			attr.Value = parseExprStr(content, pt.Pos)
+		}
+	}
+	return attr
+}
+
+func (p *Parser) parseFunc() *giomnode.FuncDecl {
+	tok := p.Token
+	p.expect(giomtoken.Func)
+
+	argsStr := stringData(tok, "args", "")
+	exported := stringData(tok, "exported", "") == "true"
+	name := stringData(tok, "value", tok.Literal)
+	params := p.parseFuncParams(argsStr, tok.Pos)
+
+	f := &giomnode.FuncDecl{
+		NodePos:   tok.Pos,
+		Name:      name,
+		Params:    params,
+		ParamsRaw: strings.TrimSpace(argsStr),
+		Exported:  exported,
+	}
+
+	if p.Token.Token == giomtoken.Indent {
+		f.Body = p.parseBlock(f)
+	}
+
+	if len(f.Body) > 0 {
+		f.NodeEnd = f.Body[len(f.Body)-1].End()
+	} else {
+		f.NodeEnd = tok.Pos + source.Pos(len(tok.Literal))
 	}
 	return f
 }
 
-func (p *Parser) parseComp() *Comp {
-	tok := p.expect(tokComp)
-	c := mustParseFirstStmt("func("+ensureFnParamSep(tok.Data["Args"])+"){}", false)
-	comp := newComp(tok.Value, &c.(*node.FuncStmt).Func.Type.Params, tok.Data["Exported"] == "true")
-	comp.SourcePosition = p.pos()
+func (p *Parser) parseComp() *giomnode.CompDecl {
+	tok := p.Token
+	p.expect(giomtoken.Comp)
 
-	if p.currenttoken.Kind == tokIndent {
-		comp.Block = p.parseBlock(comp)
+	name := stringData(tok, "value", tok.Literal)
+	argsStr := stringData(tok, "args", "")
+	exported := stringData(tok, "exported", "") == "true"
+	params := p.parseCompParams(argsStr, tok.Pos)
+
+	comp := &giomnode.CompDecl{
+		NodePos:   tok.Pos,
+		Name:      name,
+		ID:        strings.ReplaceAll(name, "-", "__"),
+		Params:    params,
+		ParamsRaw: strings.TrimSpace(argsStr),
+		Exported:  exported,
 	}
 
+	p.compStack = append(p.compStack, comp)
+	if p.Token.Token == giomtoken.Indent {
+		comp.Body = p.parseBlock(comp)
+	}
+	p.compStack = p.compStack[:len(p.compStack)-1]
+
+	if len(comp.Body) > 0 {
+		comp.NodeEnd = comp.Body[len(comp.Body)-1].End()
+	} else {
+		comp.NodeEnd = tok.Pos + source.Pos(len(tok.Literal))
+	}
+	p.comps = append(p.comps, comp)
 	return comp
 }
 
-func (p *Parser) parseCompCall() *CompCall {
-	tok := p.expect(tokCompCall)
-	call := &CompCall{
-		Name: tok.Value,
+func (p *Parser) parseSlot() *giomnode.SlotDecl {
+	tok := p.Token
+	p.expect(giomtoken.Slot)
+
+	name := stringData(tok, "value", tok.Literal)
+	argsStr := stringData(tok, "args", "")
+	scope := p.parseFuncParams(argsStr, tok.Pos)
+
+	s := &giomnode.SlotDecl{
+		NodePos:  tok.Pos,
+		Name:     name,
+		ID:       strings.ReplaceAll(name, "-", "__"),
+		Scope:    scope,
+		ScopeRaw: strings.TrimSpace(argsStr),
 	}
 
-	if header := tok.Data["Args"]; header != "" {
-		c := mustParseFirstStmt("x("+header+")", false)
-		call.Args = c.(*node.ExprStmt).Expr.(*node.CallExpr).CallArgs
+	if comp := p.currentComp(); comp != nil {
+		comp.Slots = append(comp.Slots, s)
 	}
 
-	call.SourcePosition = p.pos()
-	if p.currenttoken.Kind == tokIndent {
-		block := p.parseBlock(call)
-		var newChild []Node
-		for _, child := range block.Children {
-			switch t := child.(type) {
-			case *SlotPass:
-				call.SlotPass = append(call.SlotPass, t)
-			default:
-				newChild = append(newChild, t)
+	if p.Token.Token == giomtoken.Indent {
+		s.Body = p.parseBlock(s)
+		if len(s.Body) > 0 {
+			if w, ok := s.Body[0].(*giomnode.WrapStmt); ok {
+				s.Wrap = w
+				s.Body = s.Body[1:]
 			}
 		}
+	}
 
-		if tok.Data["WithCode"] == "true" {
-			if len(newChild) > 0 {
-				var ok bool
-				if call.InitCode, ok = newChild[0].(*Code); ok {
-					newChild = newChild[1:]
+	if len(s.Body) > 0 {
+		s.NodeEnd = s.Body[len(s.Body)-1].End()
+	} else {
+		s.NodeEnd = tok.Pos + source.Pos(len(tok.Literal))
+	}
+	return s
+}
+
+func (p *Parser) parseSlotPass() *giomnode.SlotPassStmt {
+	tok := p.Token
+	p.expect(giomtoken.SlotPass)
+
+	header := strings.TrimSpace(stringData(tok, "header", stringData(tok, "value", "")))
+	name := header
+	argsStr := ""
+	if i := strings.Index(header, "("); i >= 0 && strings.HasSuffix(header, ")") {
+		name = strings.TrimSpace(header[:i])
+		argsStr = strings.TrimSpace(header[i+1 : len(header)-1])
+	}
+
+	params, err := parseFuncParamsString(argsStr)
+	if err != nil {
+		panic(fmt.Errorf("parsing slot pass failed: %v", err))
+	}
+
+	s := &giomnode.SlotPassStmt{
+		NodePos: tok.Pos,
+		Name:    gnode.EIdent(name, tok.Pos),
+		FuncType: &gnode.FuncType{
+			FuncHeader: gnode.FuncHeader{Params: *params},
+		},
+	}
+
+	if p.Token.Token == giomtoken.Indent {
+		s.Body = p.parseBlock(s)
+	}
+
+	if len(s.Body) > 0 {
+		s.NodeEnd = s.Body[len(s.Body)-1].End()
+	} else {
+		s.NodeEnd = tok.Pos + source.Pos(len(tok.Literal))
+	}
+	return s
+}
+
+func (p *Parser) parseWrap() *giomnode.WrapStmt {
+	tok := p.Token
+	p.expect(giomtoken.Wrap)
+
+	w := &giomnode.WrapStmt{
+		NodePos: tok.Pos,
+	}
+	w.Body = p.parseBlock(w)
+
+	if len(w.Body) > 0 {
+		w.NodeEnd = w.Body[len(w.Body)-1].End()
+	}
+	return w
+}
+
+func (p *Parser) parseCompCall() *giomnode.CompCallStmt {
+	tok := p.Token
+	p.expect(giomtoken.CompCall)
+
+	name := stringData(tok, "value", tok.Literal)
+	call := &giomnode.CompCallStmt{
+		NodePos: tok.Pos,
+		Name:    name,
+	}
+
+	if header := stringData(tok, "args", ""); header != "" {
+		args, err := parseCallArgsString(header)
+		if err != nil {
+			panic(err)
+		}
+		call.Args = *args
+	}
+
+	if p.Token.Token == giomtoken.Indent {
+		block := p.parseBlock(call)
+		var lastMainSlot *giomnode.SlotPassStmt
+		for _, child := range block {
+			switch t := child.(type) {
+			case *giomnode.SlotPassStmt:
+				call.SlotPass = append(call.SlotPass, t)
+				lastMainSlot = nil
+			default:
+				if t != nil {
+					if lastMainSlot != nil {
+						lastMainSlot.Body.Append(t)
+						lastMainSlot.NodeEnd = t.End()
+					} else {
+						lastMainSlot = &giomnode.SlotPassStmt{
+							NodePos:  t.Pos(),
+							NodeEnd:  t.End(),
+							Name:     gnode.EIdent("main", 0),
+							FuncType: gnode.ProxyFuncType(),
+							Body:     gnode.Stmts{t},
+						}
+						call.SlotPass = append(call.SlotPass, lastMainSlot)
+					}
 				}
 			}
 		}
-
-		if len(newChild) > 0 {
-			block.Children = newChild
-			call.SlotPass = append(call.SlotPass, &SlotPass{
-				SourcePosition: newChild[0].Pos(),
-				Name:           node.EIdent("main", 0),
-				FuncType:       node.ProxyFuncType(),
-				Block:          block,
-			})
+		if withCode, _ := tok.GetOk("withCode"); withCode == "true" {
+			if len(block) > 0 {
+				if cs, ok := block[0].(*giomnode.CodeStmt); ok {
+					call.InitCode = cs
+				}
+			}
 		}
 	}
+
+	call.NodeEnd = callEnd(call)
 	return call
 }
 
-func (p *Parser) parseSwitch() *Switch {
-	tok := p.expect(tokSwitch)
-	sw := &Switch{
-		Expr:           tok.Value,
-		SourcePosition: p.pos(),
+func (p *Parser) parseSwitch() *giomnode.SwitchStmt {
+	tok := p.Token
+	p.expect(giomtoken.Switch)
+
+	tagExpr := parseExprStr(stringData(tok, "value", ""), tok.Pos)
+	s := &giomnode.SwitchStmt{
+		NodePos: tok.Pos,
+		Tag:     tagExpr,
 	}
 
-	if p.currenttoken.Kind == tokIndent {
-		p.next()
+	if p.Token.Token == giomtoken.Indent {
+		p.Next()
 	next:
-		switch p.currenttoken.Kind {
-		case tokCase:
-			tok := p.expect(tokCase)
-			swCase := &Case{
-				Expr:           tok.Value,
-				SourcePosition: p.pos(),
+		switch p.Token.Token {
+		case giomtoken.Case:
+			caseTok := p.Token
+			p.expect(giomtoken.Case)
+			cc := &giomnode.CaseClause{
+				Expr: parseExprStr(stringData(caseTok, "value", ""), caseTok.Pos),
 			}
-			if p.currenttoken.Kind == tokIndent {
-				swCase.Content = p.parseBlock(swCase)
+			if p.Token.Token == giomtoken.Indent {
+				cc.Body = p.parseBlock(s)
 			}
-			sw.Cases = append(sw.Cases, swCase)
+			s.Cases = append(s.Cases, cc)
 			goto next
-		case tokDefault:
-			p.expect(tokDefault)
-			def := &Default{
-				SourcePosition: p.pos(),
+		case giomtoken.Default:
+			p.expect(giomtoken.Default)
+			if p.Token.Token == giomtoken.Indent {
+				s.Default = p.parseBlock(s)
 			}
-			sw.Default = def
-			if p.currenttoken.Kind == tokIndent {
-				def.Content = p.parseBlock(sw)
-			}
-			p.expect(tokOutdent)
 		default:
-			p.expect(tokCase, tokDefault, tokOutdent)
+			p.expect(giomtoken.Case, giomtoken.Default, giomtoken.Outdent)
 		}
+		p.expect(giomtoken.Outdent)
 	}
 
-	return sw
+	s.NodeEnd = switchEnd(s)
+	return s
 }
 
-func (p *Parser) parseExport() *Export {
-	tok := p.expect(tokExport)
-	ex := &Export{
-		SourcePosition: p.pos(),
-		Name:           tok.Data["Name"],
-		Value:          tok.Data["Value"],
+func (p *Parser) parseExport() *giomnode.ExportStmt {
+	tok := p.Token
+	p.expect(giomtoken.Export)
+
+	name := stringData(tok, "name", stringData(tok, "value", ""))
+	valueStr := stringData(tok, "value", "")
+
+	e := &giomnode.ExportStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Name:    name,
 	}
-	return ex
+	if valueStr != "" {
+		e.Value = gnode.EIdent(valueStr, tok.Pos)
+	}
+	return e
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+func stringData(pt gadparser.PToken, key, def string) string {
+	if v, ok := pt.GetOk(key); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return def
+}
+
+func parseExprStr(s string, pos source.Pos) gnode.Expr {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return gnode.EIdent("", pos)
+	}
+	stmt, err := parseGadFirstStmt(s, nil, false)
+	if err != nil {
+		return gnode.EIdent(s, pos)
+	}
+	if es, ok := stmt.(*gnode.ExprStmt); ok {
+		return es.Expr
+	}
+	return gnode.EIdent(s, pos)
+}
+
+func splitTopLevelArgs(s string) []string {
+	var (
+		parts   []string
+		start   int
+		depth   int
+		quote   byte
+		escaped bool
+	)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',', ';':
+			if depth == 0 {
+				parts = append(parts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+func topLevelAssignIndex(s string) int {
+	var (
+		depth   int
+		quote   byte
+		escaped bool
+	)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '=':
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func callEnd(call *giomnode.CompCallStmt) source.Pos {
+	if len(call.SlotPass) > 0 {
+		return call.SlotPass[len(call.SlotPass)-1].End()
+	}
+	return call.Pos()
+}
+
+func switchEnd(s *giomnode.SwitchStmt) source.Pos {
+	if len(s.Default) > 0 {
+		return s.Default[len(s.Default)-1].End()
+	}
+	if len(s.Cases) > 0 {
+		last := s.Cases[len(s.Cases)-1]
+		if len(last.Body) > 0 {
+			return last.Body[len(last.Body)-1].End()
+		}
+	}
+	return s.Pos()
+}
+
+func bodyEndIf(s *giomnode.IfStmt) source.Pos {
+	if len(s.Else) > 0 {
+		return s.Else[len(s.Else)-1].End()
+	}
+	if len(s.ElseIfs) > 0 {
+		last := s.ElseIfs[len(s.ElseIfs)-1]
+		if len(last.Body) > 0 {
+			return last.Body[len(last.Body)-1].End()
+		}
+	}
+	if len(s.Body) > 0 {
+		return s.Body[len(s.Body)-1].End()
+	}
+	return s.Pos()
+}
+
+func bodyEndFor(s *giomnode.ForStmt) source.Pos {
+	if len(s.Else) > 0 {
+		return s.Else[len(s.Else)-1].End()
+	}
+	if len(s.Body) > 0 {
+		return s.Body[len(s.Body)-1].End()
+	}
+	return s.Pos()
 }

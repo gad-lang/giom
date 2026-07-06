@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gad-lang/gad"
+	giom "github.com/gad-lang/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -24,6 +26,12 @@ func newTestApp(t *testing.T) *App {
 		Root:         root,
 		PublicDir:    filepath.Join(root, "public"),
 		TranspileDir: filepath.Join(root, "public", ".transpiled"),
+	}
+	app.renderer = &giom.Render{
+		WorkDir: app.PublicDir,
+		BuiltinsFunc: func() *gad.Builtins {
+			return giom.AppendBuiltins(gad.NewBuiltins())
+		},
 	}
 	if err := db.AutoMigrate(&Page{}, &Tag{}, &Post{}, &MenuItem{}); err != nil {
 		t.Fatalf("migrate: %v", err)

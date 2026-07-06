@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/gad-lang/gad"
 )
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -22,6 +26,17 @@ func badRequest(w http.ResponseWriter, err error) {
 
 func methodNotAllowed(w http.ResponseWriter) {
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (a *App) render(w http.ResponseWriter, name string, model gad.Dict) {
+	filePath := filepath.Join(a.PublicDir, filepath.Clean(name))
+	var out bytes.Buffer
+	if err := a.renderer.Render(&out, filePath, "Model", model); err != nil {
+		a.serverError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(out.Bytes())
 }
 
 func (a *App) serverError(w http.ResponseWriter, err error) {

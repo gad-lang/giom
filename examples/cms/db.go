@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
-	"github.com/gad-lang/gad"
+	giom "github.com/gad-lang/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -19,15 +18,7 @@ type App struct {
 	TranspileDir  string
 	TemplateDelay time.Duration
 
-	mu            sync.Mutex
-	templateCache map[string]*templateCacheEntry
-}
-
-type templateCacheEntry struct {
-	bc        *gad.Bytecode
-	builtins  *gad.Builtins
-	files     map[string]time.Time
-	changedAt time.Time
+	renderer *giom.Render
 }
 
 func NewApp(root string) (*App, error) {
@@ -45,8 +36,13 @@ func NewApp(root string) (*App, error) {
 		PublicDir:     filepath.Join(root, "public"),
 		TranspileDir:  filepath.Join(root, "public", ".transpiled"),
 		TemplateDelay: 5 * time.Second,
-		templateCache: make(map[string]*templateCacheEntry),
+		renderer: &giom.Render{
+			TemplateDelay: 5 * time.Second,
+			WorkDir:       filepath.Join(root, "public"),
+			TranspilePath: nil, // set below after app is constructed
+		},
 	}
+	app.renderer.TranspilePath = app.transpilePath
 	app.cleanTranspiled()
 	if err := app.DB.AutoMigrate(&Page{}, &Tag{}, &Post{}, &MenuItem{}); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)

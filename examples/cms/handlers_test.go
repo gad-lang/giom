@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gad-lang/gad"
+	giom "github.com/gad-lang/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -204,6 +206,12 @@ func TestEmptyDBDoesNotPanic(t *testing.T) {
 		Root:         root,
 		PublicDir:    filepath.Join(root, "public"),
 		TranspileDir: filepath.Join(root, "public", ".transpiled"),
+	}
+	emptyApp.renderer = &giom.Render{
+		WorkDir: emptyApp.PublicDir,
+		BuiltinsFunc: func() *gad.Builtins {
+			return giom.AppendBuiltins(gad.NewBuiltins())
+		},
 	}
 	db.AutoMigrate(&Page{}, &Tag{}, &Post{}, &MenuItem{})
 	emptyApp.cleanTranspiled()

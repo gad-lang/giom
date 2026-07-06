@@ -1,7 +1,6 @@
 package giom
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -13,10 +12,11 @@ import (
 )
 
 type templateCacheEntry struct {
-	bc        *gad.Bytecode
-	builtins  *gad.Builtins
-	files     map[string]time.Time
-	changedAt time.Time
+	bc         *gad.Bytecode
+	builtins   *gad.Builtins
+	files      map[string]time.Time
+	changedAt  time.Time
+	compiledAt time.Time
 }
 
 type trackingReader struct {
@@ -40,13 +40,13 @@ func (r *trackingReader) Read(path string) ([]byte, string, error) {
 // automatic recompilation on file changes. It is safe for concurrent use.
 type Render struct {
 	// TemplateDelay is the debounce duration before recompiling after
-	// a file change is detected. Defaults to 5s.
+	// a file change is detected. Defaults to 15s.
 	TemplateDelay time.Duration
 
-	// WorkDir is the directory used as the base for resolving module
+	// workDir is the directory used as the base for resolving module
 	// imports via FileImporter. Defaults to the directory of the
 	// rendered file if empty.
-	WorkDir string
+	workDir string
 
 	// TranspilePath returns the output path for transpiled .gad files.
 	// If nil, transpilation is skipped.
@@ -57,7 +57,40 @@ type Render struct {
 	BuiltinsFunc func() *gad.Builtins
 
 	mu            sync.Mutex
+	compileMu     sync.Mutex
 	templateCache map[string]*templateCacheEntry
+	onRenderFuncs []func(first bool, mainFile string, files []string, lastTime time.Time, err error)
+	cachedBuiltins *gad.Builtins
+	builtinsOnce  sync.Once
+}
+
+// NewRender creates a Render with the given workDir. Non-empty paths are
+// resolved to an absolute path. Other fields (TemplateDelay, TranspilePath,
+// BuiltinsFunc) may be set on the returned value before use.
+func NewRender(workDir string) *Render {
+	if workDir != "" {
+		abs, err := filepath.Abs(workDir)
+		if err == nil {
+			workDir = abs
+		}
+	}
+	return &Render{
+		workDir:       workDir,
+		TemplateDelay: time.Second * 15,
+	}
+}
+
+// WorkDir returns the base directory for resolving module imports.
+func (r *Render) WorkDir() string { return r.workDir }
+
+// OnRender appends callback functions invoked after compilation.
+// On first render, first=true with empty files and zero lastTime.
+// On recompilation due to file changes, first=false with the changed file paths.
+// If compilation fails, err is non-nil and the cached entry is not updated.
+// Returns the Render for chaining.
+func (r *Render) OnRender(f ...func(first bool, mainFile string, files []string, lastTime time.Time, err error)) *Render {
+	r.onRenderFuncs = append(r.onRenderFuncs, f...)
+	return r
 }
 
 // Render reads the Giom template at filePath, compiles or retrieves cached
@@ -71,18 +104,34 @@ func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue 
 
 	delay := r.TemplateDelay
 	if delay <= 0 {
-		delay = 5 * time.Second
+		delay = 15 * time.Second
 	}
+
+	var (
+		first        bool
+		changed      []string
+		lastTime     time.Time
+		needsCompile bool
+		base         string
+	)
 
 	r.mu.Lock()
 	if r.templateCache == nil {
 		r.templateCache = make(map[string]*templateCacheEntry)
 	}
 	entry := r.templateCache[filePath]
-	needsCompile := entry == nil
+	first = entry == nil
+	base = r.workDir
+	if base == "" {
+		base = filepath.Dir(filePath)
+	}
 	if entry != nil {
-		if filesChanged(entry.files) {
-			entry.changedAt = time.Now()
+		lastTime = entry.compiledAt
+		if changedFiles := changedPaths(entry.files, base); len(changedFiles) > 0 {
+			if entry.changedAt.IsZero() {
+				entry.changedAt = time.Now()
+			}
+			changed = changedFiles
 		}
 		if !entry.changedAt.IsZero() && time.Since(entry.changedAt) >= delay {
 			needsCompile = true
@@ -90,10 +139,26 @@ func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue 
 	}
 	r.mu.Unlock()
 
-	if needsCompile {
-		entry, err = r.compile(filePath, src)
-		if err != nil {
-			return err
+	if first || needsCompile {
+		newEntry, cerr := r.compile(filePath, src)
+		if cerr == nil {
+			newEntry.compiledAt = time.Now()
+			r.mu.Lock()
+			r.templateCache[filePath] = newEntry
+			entry = newEntry
+			r.mu.Unlock()
+		}
+		mainRel := filePath
+		if base != "" {
+			if rel, err := filepath.Rel(base, filePath); err == nil {
+				mainRel = rel
+			}
+		}
+		for _, fn := range r.onRenderFuncs {
+			fn(first, mainRel, changed, lastTime, cerr)
+		}
+		if cerr != nil {
+			return cerr
 		}
 	}
 
@@ -101,30 +166,32 @@ func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue 
 		_ = Transpile(filePath, src, r.TranspilePath(filePath))
 	}
 
-	var buf bytes.Buffer
 	st := gad.NewSymbolTable(entry.builtins.NameSet)
 	if _, err := st.DefineGlobals([]string{globalName}); err != nil {
 		return err
 	}
 	vm := gad.NewVM(entry.builtins.Build(), entry.bc)
-	_, err = vm.RunOpts(&gad.RunOpts{StdOut: &buf, Globals: gad.Dict{globalName: globalValue}})
+	_, err = vm.RunOpts(&gad.RunOpts{StdOut: out, Globals: gad.Dict{globalName: globalValue}})
 	if err != nil {
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}
-	_, err = io.Copy(out, &buf)
 	return err
 }
 
 func (r *Render) compile(filePath string, src []byte) (*templateCacheEntry, error) {
-	builtinsFn := r.BuiltinsFunc
-	if builtinsFn == nil {
-		builtinsFn = func() *gad.Builtins { return gad.NewBuiltins() }
-	}
+	r.compileMu.Lock()
+	defer r.compileMu.Unlock()
 
-	builtins := AppendBuiltins(builtinsFn())
+	r.builtinsOnce.Do(func() {
+		builtinsFn := r.BuiltinsFunc
+		if builtinsFn == nil {
+			builtinsFn = func() *gad.Builtins { return gad.NewBuiltins() }
+		}
+		r.cachedBuiltins = AppendBuiltins(builtinsFn())
+	})
 
 	tr := newTrackingReader()
-	workDir := r.WorkDir
+	workDir := r.workDir
 	if workDir == "" {
 		workDir = filepath.Dir(filePath)
 	}
@@ -140,7 +207,7 @@ func (r *Render) compile(filePath string, src []byte) (*templateCacheEntry, erro
 		FallbackFunc: CompileFallback,
 	}}
 
-	st := gad.NewSymbolTable(builtins.NameSet)
+	st := gad.NewSymbolTable(r.cachedBuiltins.NameSet)
 	if _, err := st.DefineGlobals([]string{"Model"}); err != nil {
 		return nil, err
 	}
@@ -150,23 +217,38 @@ func (r *Render) compile(filePath string, src []byte) (*templateCacheEntry, erro
 	}
 
 	files := make(map[string]time.Time)
+
+	// Track imported files.
 	for p := range tr.files {
 		if fi, err := os.Stat(p); err == nil {
 			files[p] = fi.ModTime()
 		}
 	}
-
-	entry := &templateCacheEntry{
-		bc:       bc,
-		builtins: builtins,
-		files:    files,
+	// Also track the main template file.
+	if fi, err := os.Stat(filePath); err == nil {
+		files[filePath] = fi.ModTime()
 	}
 
-	r.mu.Lock()
-	r.templateCache[filePath] = entry
-	r.mu.Unlock()
+	return &templateCacheEntry{
+		bc:       bc,
+		builtins: r.cachedBuiltins,
+		files:    files,
+	}, nil
+}
 
-	return entry, nil
+func changedPaths(files map[string]time.Time, base string) []string {
+	var out []string
+	for p, mod := range files {
+		fi, err := os.Stat(p)
+		if err != nil || !fi.ModTime().Equal(mod) {
+			rel, err := filepath.Rel(base, p)
+			if err != nil {
+				rel = p
+			}
+			out = append(out, rel)
+		}
+	}
+	return out
 }
 
 func filesChanged(files map[string]time.Time) bool {

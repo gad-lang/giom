@@ -45,31 +45,67 @@ func Render(src []byte, globals gad.Dict) (string, error) {
 `giom.Render` provides a ready-to-use template engine with bytecode caching and
 automatic recompilation on file changes. It is safe for concurrent use.
 
+### Construction
+
+Use the `NewRender` constructor to set the work directory (resolved to an
+absolute path automatically):
+
 ```go
 import "github.com/gad-lang/giom"
 
-r := &giom.Render{
-    TemplateDelay: 5 * time.Second, // debounce before recompiling
-    WorkDir:       "./templates",
-    TranspilePath: func(src string) string {
-        return strings.TrimSuffix(src, ".giom") + ".gad"
-    },
+r := giom.NewRender("./templates")
+r.TemplateDelay = 5 * time.Second
+r.TranspilePath = func(src string) string {
+    return strings.TrimSuffix(src, ".giom") + ".gad"
 }
+```
 
+### Rendering
+
+```go
 var out bytes.Buffer
 err := r.Render(&out, "template.giom", "Model", gad.Dict{
     "Title": gad.Str("Home"),
 })
 ```
 
-The `TemplateDelay` (default 5s) prevents recompilation on rapid file saves.
+The `TemplateDelay` (default 15s) prevents recompilation on rapid file saves.
 `WorkDir` is the base for resolving `@import` lines via `FileImporter`.
 `TranspilePath` is optional — when set, transpiled `.gad` files are written
 for inspection.
 
-Internally, `Render` tracks all files accessed during compilation (the
-template and its imports). If any change is detected, compilation is
-deferred until `TemplateDelay` elapses, then the bytecode is rebuilt.
+### File Change Detection
+
+`Render` tracks all files accessed during compilation (the template and its
+imports). If any change is detected, compilation is deferred until
+`TemplateDelay` elapses, then the bytecode is rebuilt.
+
+If compilation fails, the old bytecode remains in the cache and continues to
+be served. This ensures that broken edits never cause a blank page.
+
+### Callbacks
+
+Use `OnRender` to hook into the compilation lifecycle:
+
+```go
+r.OnRender(func(first bool, mainFile string, files []string, lastTime time.Time, err error) {
+    if err != nil {
+        log.Printf("compile error for %s: %v", mainFile, err)
+        return
+    }
+    if first {
+        log.Printf("first render: %s", mainFile)
+    } else {
+        log.Printf("recompile: %s (changed: %v)", mainFile, files)
+    }
+})
+```
+
+Multiple callbacks can be added:
+
+```go
+r.OnRender(loggingCallback).OnRender(metricsCallback)
+```
 
 ## Builtins Rule
 

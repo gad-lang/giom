@@ -438,11 +438,15 @@ func (p *Parser) parseImportModule() *giomnode.CodeStmt {
 
 	path := stringData(tok, "value", "")
 	ident := stringData(tok, "ident", "")
+	destructure := stringData(tok, "destructure", "")
 
 	var gadSrc string
-	if ident != "" {
+	switch {
+	case destructure != "":
+		gadSrc = fmt.Sprintf("{%s} := import(%s)", destructure, path)
+	case ident != "":
 		gadSrc = fmt.Sprintf("const %s = import(%s)", ident, path)
-	} else {
+	default:
 		gadSrc = fmt.Sprintf("import(%s)", path)
 	}
 

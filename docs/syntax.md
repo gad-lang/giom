@@ -160,12 +160,42 @@ ul
 
 ## Imports
 
+### Bare Import
+
 ```giom
 @import "components.giom"
 ```
 
-The parser recognizes import lines. Applications commonly resolve imports before
-compilation, as shown in `examples/cms/main.go`.
+Imports the module for its side effects.
+
+### Named Import
+
+```giom
+@import "components.giom" as comps
+```
+
+Makes the module available as the variable `comps`. Components or values from
+the module are accessed via `+comps.name(...)`.
+
+### Destructured Import
+
+```giom
+@import { page_wrapper, hero } from "components.giom"
+```
+
+Extracts specific named exports directly into scope. Components are then
+available as `+page_wrapper(...)` and `+hero(...)` without a module prefix.
+
+Supports Gad destructuring syntax including:
+
+- Rename: `@import { page_wrapper: pw } from "components.giom"`
+- Default value: `@import { page_wrapper = fallback } from "components.giom"`
+- Rest pattern: `@import { page_wrapper, **rest } from "components.giom"`
+- Mixed: `@import { a, b: bb, c = nil, **rest } from "modules.giom"`
+
+All forms compile to Gad `import()` calls. Destructured imports generate a
+curly-destructure assignment (`{...} := import("...")`), which is handled by
+Gad's built-in destructuring compiler.
 
 ## Globals
 

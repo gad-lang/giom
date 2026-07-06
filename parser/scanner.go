@@ -425,13 +425,22 @@ func (s *scanner) scanAttribute() gadparser.PToken {
 }
 
 var rgxImportModule = regexp.MustCompile(`^@import\s+("[0-9a-zA-Z_\-\. \/][0-9a-zA-Z_\-\. \/]*")(\s+as\s+([a-zA-Z$_]\w*))?$`)
+var rgxImportDestructure = regexp.MustCompile(`^@import\s*\{([^}]*)\}\s+from\s+("[0-9a-zA-Z_\-\. \/][0-9a-zA-Z_\-\. \/]*")$`)
 
 func (s *scanner) scanImportModule() gadparser.PToken {
-	if sm := rgxImportModule.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		pt := s.newToken(giomtoken.ImportModule, sm[0], sm[1])
-		pt.Set("ident", sm[3])
-		return pt
+	if strings.HasPrefix(s.buffer, "@import") {
+		if sm := rgxImportDestructure.FindStringSubmatch(s.buffer); len(sm) != 0 {
+			s.consume(len(sm[0]))
+			pt := s.newToken(giomtoken.ImportModule, sm[0], sm[2])
+			pt.Set("destructure", strings.TrimSpace(sm[1]))
+			return pt
+		}
+		if sm := rgxImportModule.FindStringSubmatch(s.buffer); len(sm) != 0 {
+			s.consume(len(sm[0]))
+			pt := s.newToken(giomtoken.ImportModule, sm[0], sm[1])
+			pt.Set("ident", sm[3])
+			return pt
+		}
 	}
 	return gadparser.PToken{}
 }

@@ -1,6 +1,7 @@
 package giom
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -175,12 +176,12 @@ func (r *Render) Render(out io.Writer, filePath string, globals gad.Dict) error 
 	if _, err := st.DefineGlobals(globalNames); err != nil {
 		return err
 	}
-	vm := gad.NewVM(entry.builtins.Build(), entry.bc)
-	_, err = vm.RunOpts(&gad.RunOpts{StdOut: out, Globals: gad.Dict(globals)})
+	e := gad.NewEval(entry.builtins.Build(), st, gad.CompileOptions{}, &gad.RunOpts{StdOut: out, Globals: gad.Dict(globals)})
+	_, err = e.Run(context.Background(), entry.bc)
 	if err != nil {
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}
-	return err
+	return nil
 }
 
 func (r *Render) compile(filePath string, src []byte, globalNames []string) (*templateCacheEntry, error) {

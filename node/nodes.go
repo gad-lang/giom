@@ -504,6 +504,7 @@ type CompCallStmt struct {
 	NodePos  source.Pos
 	NodeEnd  source.Pos
 	Name     string
+	Func     gnode.Expr
 	Args     gnode.CallArgs
 	SlotPass []*SlotPassStmt
 	InitCode *CodeStmt
@@ -515,7 +516,11 @@ func (c *CompCallStmt) StmtNode()       {}
 func (c *CompCallStmt) String() string  { return fmt.Sprintf("giom.CompCall(%s)", c.Name) }
 
 func (c *CompCallStmt) WriteCode(ctx *gnode.CodeWriteContext) {
-	ctx.WriteString(c.Name)
+	if c.Func != nil {
+		c.Func.WriteCode(ctx)
+	} else {
+		ctx.WriteString(c.Name)
+	}
 	c.Args.WriteCode(ctx)
 }
 

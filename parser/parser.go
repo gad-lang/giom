@@ -666,6 +666,7 @@ func (p *Parser) parseCompCall() *giomnode.CompCallStmt {
 	call := &giomnode.CompCallStmt{
 		NodePos: tok.Pos,
 		Name:    name,
+		Func:    compCallFuncExpr(name, tok.Pos),
 	}
 
 	if header := stringData(tok, "args", ""); header != "" {
@@ -799,6 +800,13 @@ func parseExprStr(s string, pos source.Pos) gnode.Expr {
 		return es.Expr
 	}
 	return gnode.EIdent(s, pos)
+}
+
+func compCallFuncExpr(name string, pos source.Pos) gnode.Expr {
+	if strings.Contains(name, ".") {
+		return parseExprStr(name, pos)
+	}
+	return gnode.EIdent(strings.ReplaceAll(name, "-", "__"), pos)
 }
 
 func splitTopLevelArgs(s string) []string {

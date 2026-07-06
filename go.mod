@@ -2,7 +2,7 @@ module github.com/gad-lang/giom
 
 go 1.25.0
 
-require github.com/gad-lang/gad v0.0.2-0.20260704234103-6f1f84ab611d
+require github.com/gad-lang/gad v0.0.2-0.20260706001951-ac25992c0e0c
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

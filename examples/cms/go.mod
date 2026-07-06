@@ -3,7 +3,7 @@ module github.com/gad-lang/giom/examples/cms
 go 1.25.0
 
 require (
-	github.com/gad-lang/gad v0.0.2-0.20260704234103-6f1f84ab611d
+	github.com/gad-lang/gad v0.0.2-0.20260706001951-ac25992c0e0c
 	github.com/gad-lang/giom v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0

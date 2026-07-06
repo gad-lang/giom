@@ -1,12 +1,12 @@
-@import "components.giom"
+@import "components.giom" as comps
 
 @main
-    +page_wrapper(Model.Post.Title)
-        +hero(Model.Post.Title, Model.Post.Summary ; cover=Model.Post.CoverImage)
+    +comps.page_wrapper(Model.Post.Title)
+        +comps.hero(Model.Post.Title, Model.Post.Summary ; cover=Model.Post.CoverImage)
         div.container.article
             article.article-main
                 #{=raw Model.Post.Body}
-                +gallery(Model.Post.Images)
+                +comps.gallery(Model.Post.Images)
             aside.aside
                 #{=raw Model.Post.RightBody}
                 div.tags

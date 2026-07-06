@@ -165,20 +165,26 @@ func convertBody(stmts gnode.Stmts) gnode.Stmts {
 
 func convertFuncDecl(f *FuncDecl) gnode.Stmts {
 	params := addSlotsParam(f.Params)
-	return gnode.Stmts{
+	fn := funcExpr(params, convertBody(f.Body), f.Pos(), f.End())
+	stmts := gnode.Stmts{
 		gnode.SDecl(&gnode.GenDecl{
 			Tok:    token.Const,
 			TokPos: f.Pos(),
 			Specs: []gnode.Spec{
 				&gnode.ValueSpec{
 					Idents: []*gnode.IdentExpr{gnode.EIdent(f.Name, f.Pos())},
-					Values: []gnode.Expr{
-						funcExpr(params, convertBody(f.Body), f.Pos(), f.End()),
-					},
+					Values: []gnode.Expr{fn},
 				},
 			},
 		}),
 	}
+	if f.Exported {
+		stmts = append(stmts, &gnode.ExportStmt{
+			TokenPos: f.Pos(),
+			KeyExpr:  gnode.EIdent(f.Name, f.Pos()),
+		})
+	}
+	return stmts
 }
 
 func addSlotsParam(params *gnode.FuncParams) *gnode.FuncParams {
@@ -206,26 +212,36 @@ func convertCompDecl(c *CompDecl) gnode.Stmts {
 	if c.Name == "main" {
 		return body
 	}
+	fn := funcExpr(addSlotsParam(c.Params), body, c.Pos(), c.End())
 
-	return gnode.Stmts{
+	stmts := gnode.Stmts{
 		gnode.SDecl(&gnode.GenDecl{
 			Tok:    token.Const,
 			TokPos: c.Pos(),
 			Specs: []gnode.Spec{
 				&gnode.ValueSpec{
 					Idents: []*gnode.IdentExpr{gnode.EIdent(c.ID, c.Pos())},
-					Values: []gnode.Expr{
-						funcExpr(addSlotsParam(c.Params), body, c.Pos(), c.End()),
-					},
+					Values: []gnode.Expr{fn},
 				},
 			},
 		}),
 	}
+	if c.Exported {
+		stmts = append(stmts, &gnode.ExportStmt{
+			TokenPos: c.Pos(),
+			KeyExpr:  gnode.EIdent(c.ID, c.Pos()),
+		})
+	}
+	return stmts
 }
 
 func convertCompCall(c *CompCallStmt) gnode.Stmts {
+	fn := c.Func
+	if fn == nil {
+		fn = gnode.EIdent(c.Name, c.Pos())
+	}
 	call := &gnode.CallExpr{
-		Func: gnode.EIdent(c.Name, c.Pos()),
+		Func: fn,
 	}
 	if !c.Args.LParen.IsValid() {
 		call.LParen = c.Pos()

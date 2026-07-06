@@ -1,10 +1,10 @@
-@import "components.giom"
+@import "components.giom" as comps
 
 @main
-    +page_wrapper("Posts tagged " + Model.Tag.Name)
-        +hero(("Posts tagged " + Model.Tag.Name), "Browse the latest published articles for this topic." ; cover="/seed-data/images/sqlite-hero.jpg")
+    +comps.page_wrapper("Posts tagged " + Model.Tag.Name)
+        +comps.hero(("Posts tagged " + Model.Tag.Name), "Browse the latest published articles for this topic." ; cover="/seed-data/images/sqlite-hero.jpg")
         div.container
             div.grid
                 @for post in Model.Posts
-                    +post_card(post)
-            +pager(Model.Pager)
+                    +comps.post_card(post)
+            +comps.pager(Model.Pager)

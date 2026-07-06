@@ -3,23 +3,15 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/gad-lang/gad"
-	gnode "github.com/gad-lang/gad/parser/node"
-	"github.com/gad-lang/gad/parser/source"
 	giom "github.com/gad-lang/giom"
-	giomnode "github.com/gad-lang/giom/node"
-	giomparser "github.com/gad-lang/giom/parser"
 )
-
-var importLine = regexp.MustCompile(`(?m)^@import\s+"([^"]+)"\s*$`)
 
 func (a *App) render(w http.ResponseWriter, name string, model gad.Dict) {
 	src, err := a.loadTemplate(name)
@@ -33,7 +25,12 @@ func (a *App) render(w http.ResponseWriter, name string, model gad.Dict) {
 		a.serverError(w, err)
 		return
 	}
-	_, bc, err := giom.Compile(st, []byte(src), gad.CompileOptions{})
+	opts := gad.CompileOptions{CompilerOptions: gad.CompilerOptions{
+		ModuleFile:   filepath.Join(a.PublicDir, name),
+		ModuleMap:    a.moduleMap(),
+		FallbackFunc: giom.CompileFallback,
+	}}
+	_, bc, err := giom.Compile(st, src, opts)
 	if err != nil {
 		a.serverError(w, fmt.Errorf("compile %s: %w", name, err))
 		return
@@ -49,61 +46,34 @@ func (a *App) render(w http.ResponseWriter, name string, model gad.Dict) {
 	_, _ = w.Write(out.Bytes())
 }
 
-func (a *App) loadTemplate(name string) (string, error) {
-	fullSrc, err := a.resolveImports(name, map[string]bool{})
-	if err != nil {
-		return "", err
-	}
-	a.transpile(name, fullSrc)
-	return fullSrc, nil
-}
-
-func (a *App) resolveImports(name string, seen map[string]bool) (string, error) {
+func (a *App) loadTemplate(name string) ([]byte, error) {
 	clean := filepath.Clean(name)
-	if seen[clean] {
-		return "", nil
-	}
-	seen[clean] = true
 	path := filepath.Join(a.PublicDir, clean)
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", clean, err)
+		return nil, fmt.Errorf("read %s: %w", clean, err)
 	}
-	src := string(b)
-	var imports strings.Builder
-	for _, m := range importLine.FindAllStringSubmatch(src, -1) {
-		part, err := a.resolveImports(m[1], seen)
-		if err != nil {
-			return "", err
-		}
-		imports.WriteString(part)
-		if !strings.HasSuffix(part, "\n") {
-			imports.WriteByte('\n')
-		}
-	}
-	src = importLine.ReplaceAllString(src, "")
-	return imports.String() + src, nil
+	a.transpile(path, b)
+	return b, nil
 }
 
-func (a *App) transpile(name, src string) {
-	transpiledName := strings.TrimSuffix(name, ".giom") + ".gad"
-	outPath := filepath.Join(a.TranspileDir, transpiledName)
-	_ = os.MkdirAll(filepath.Dir(outPath), 0755)
+func (a *App) moduleMap() *gad.ModuleMap {
+	return gad.NewModuleMap().SetExtImporter(&giom.FileImporter{
+		WorkDir:       a.PublicDir,
+		TranspilePath: a.transpilePath,
+	})
+}
 
-	fs := source.NewFileSet()
-	f := fs.AddFileData(name, -1, []byte(src))
-	p := giomparser.NewParser(f)
-	file, err := p.ParseFile()
+func (a *App) transpile(srcPath string, src []byte) {
+	_ = giom.Transpile(srcPath, src, a.transpilePath(srcPath))
+}
+
+func (a *App) transpilePath(srcPath string) string {
+	rel, err := filepath.Rel(a.PublicDir, srcPath)
 	if err != nil {
-		log.Printf("transpile parse %s: %v", name, err)
-		return
+		rel = filepath.Base(srcPath)
 	}
-	stmts := giomnode.Convert(file.Stmts)
-	var buf bytes.Buffer
-	gnode.CodeW(&buf, stmts, gnode.CodeWithPrefix("\t"), gnode.CodeFormat())
-	if err := os.WriteFile(outPath, buf.Bytes(), 0644); err != nil {
-		log.Printf("transpile write %s: %v", transpiledName, err)
-	}
+	return filepath.Join(a.TranspileDir, strings.TrimSuffix(rel, filepath.Ext(rel))+".gad")
 }
 
 func (a *App) model(title string, crumbs []crumb, values gad.Dict) gad.Dict {

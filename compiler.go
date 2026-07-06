@@ -44,25 +44,15 @@ func CompileFile(st *gad.SymbolTable, module *gad.ModuleSpec, file *giomnode.Fil
 		file.InputFile = fs.AddFileData(module.Name, -1, nil)
 	}
 
-	gadFile := &gp.File{InputFile: file.InputFile, Stmts: file.Stmts}
-	compiler := gad.NewCompiler(st, module, file.InputFile, opts)
-	compiler.SetGlobalSymbolsIndex()
-	compiler.FallbackFunc = func(nd ast.Node) error {
-		return compileFallback(compiler, nd)
+	gadFile := &gp.File{InputFile: file.InputFile, Stmts: giomnode.Convert(file.Stmts)}
+	if opts.CompilerOptions.FallbackFunc == nil {
+		opts.CompilerOptions.FallbackFunc = CompileFallback
 	}
-
-	if err := compiler.Compile(gadFile); err != nil {
-		return nil, err
-	}
-	bc := compiler.Bytecode()
-	bc.Main.FuncName = "#main"
-	if bc.Main.NumLocals > 256 {
-		return nil, gad.ErrSymbolLimit
-	}
-	return bc, nil
+	return gad.CompileFile(st, module, gadFile, opts)
 }
 
-func compileFallback(c *gad.Compiler, nd ast.Node) error {
+// CompileFallback compiles Giom-specific AST nodes through a Gad compiler.
+func CompileFallback(c *gad.Compiler, nd ast.Node) error {
 	switch n := nd.(type) {
 	case *giomnode.File:
 		return compileStmts(c, n.Stmts)

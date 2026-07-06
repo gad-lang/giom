@@ -4,11 +4,11 @@ import "gorm.io/gorm"
 
 type Page struct {
 	gorm.Model
-	Title      string `json:"title"`
-	Slug       string `json:"slug" gorm:"uniqueIndex"`
-	Summary    string `json:"summary"`
-	Body       string `json:"body"`
-	CoverImage string `json:"coverImage"`
+	Title      string   `json:"title"`
+	Slug       string   `json:"slug" gorm:"uniqueIndex"`
+	Summary    string   `json:"summary"`
+	Body       string   `json:"body"`
+	CoverImage string   `json:"coverImage"`
 	Images     []string `json:"images" gorm:"serializer:json"`
 	Published  bool     `json:"published"`
 }
@@ -22,12 +22,12 @@ type Tag struct {
 
 type Post struct {
 	gorm.Model
-	Title      string `json:"title"`
-	Slug       string `json:"slug" gorm:"uniqueIndex"`
-	Summary    string `json:"summary"`
-	Body       string `json:"body"`
-	RightBody  string `json:"rightBody"`
-	CoverImage string `json:"coverImage"`
+	Title      string   `json:"title"`
+	Slug       string   `json:"slug" gorm:"uniqueIndex"`
+	Summary    string   `json:"summary"`
+	Body       string   `json:"body"`
+	RightBody  string   `json:"rightBody"`
+	CoverImage string   `json:"coverImage"`
 	Images     []string `json:"images" gorm:"serializer:json"`
 	Published  bool     `json:"published"`
 	Tags       []Tag    `json:"tags" gorm:"many2many:post_tags"`

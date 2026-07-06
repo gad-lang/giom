@@ -38,3 +38,25 @@ The `raw` directive outputs the value without HTML escaping. Use it for `Body`, 
 section.page-body
     #{=raw Model.Page.Body}
 ```
+
+## Template imports
+
+**Use named imports when accessing exports from another `.giom` file.**
+
+Import exported values with `as` and reference them through the module alias. This avoids relying on side-effect imports and makes component ownership explicit.
+
+```giom
+@import "components.giom" as comps
+
+@main
+    +comps.page_wrapper("Home")
+        +comps.hero("Title", "Summary")
+```
+
+Do not call exported symbols from another file as unqualified local names.
+
+```giom
+// bad
+@import "components.giom"
++page_wrapper("Home")
+```

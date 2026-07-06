@@ -146,3 +146,21 @@ func TestCompileGlobalMultiple(t *testing.T) {
 @main
     h1 "Hello"`)
 }
+
+func TestCompileVar(t *testing.T) {
+	compileSrc(t, `@var a, b, c
+@main
+    h1 "Hello"`)
+}
+
+func TestCompileVarWithInit(t *testing.T) {
+	compileSrc(t, `@var a, b = {}, x
+@main
+    h1 "Hello"`)
+}
+
+func TestCompileVarSingle(t *testing.T) {
+	compileSrc(t, `@var count = 0
+@main
+    h1 {count}`)
+}

@@ -129,6 +129,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 		return p.parseImportModule()
 	case giomtoken.Global:
 		return p.parseGlobal()
+	case giomtoken.Var:
+		return p.parseVar()
 	case giomtoken.Func:
 		return p.parseFunc()
 	case giomtoken.Comp:
@@ -535,6 +537,43 @@ func (p *Parser) parseGlobal() *giomnode.GlobalStmt {
 	return s
 }
 
+func (p *Parser) parseVar() *giomnode.VarStmt {
+	tok := p.Token
+	p.expect(giomtoken.Var)
+
+	rest := strings.TrimSpace(stringData(tok, "value", ""))
+	var decls []giomnode.VarDecl
+
+	if rest != "" {
+		parts := splitTopLevelArgs(rest)
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if idx := topLevelAssignIndex(part); idx >= 0 {
+				name := strings.TrimSpace(part[:idx])
+				initStr := strings.TrimSpace(part[idx+1:])
+				decls = append(decls, giomnode.VarDecl{
+					Name: name,
+					Init: parseExprStr(initStr, tok.Pos),
+				})
+			} else {
+				decls = append(decls, giomnode.VarDecl{
+					Name: part,
+				})
+			}
+		}
+	}
+
+	s := &giomnode.VarStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Decls:   decls,
+	}
+	return s
+}
+
 func (p *Parser) parseFunc() *giomnode.FuncDecl {
 	tok := p.Token
 	p.expect(giomtoken.Func)
@@ -821,12 +860,13 @@ func parseExprStr(s string, pos source.Pos) gnode.Expr {
 	if s == "" {
 		return gnode.EIdent("", pos)
 	}
-	stmt, err := parseGadFirstStmt(s, nil, false)
+	// Wrap in "return" to force expression parsing (handles {} dict literal etc.)
+	stmt, err := parseGadFirstStmt("return "+s, nil, false)
 	if err != nil {
 		return gnode.EIdent(s, pos)
 	}
-	if es, ok := stmt.(*gnode.ExprStmt); ok {
-		return es.Expr
+	if rs, ok := stmt.(*gnode.ReturnStmt); ok && rs.Result != nil {
+		return rs.Result
 	}
 	return gnode.EIdent(s, pos)
 }

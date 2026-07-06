@@ -641,6 +641,44 @@ func (s *MatchStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 }
 
 // =============================================================================
+// VarDecl — single variable declaration within @var
+// =============================================================================
+
+type VarDecl struct {
+	Name string
+	Init gnode.Expr
+}
+
+// VarStmt — @var declaration (compiles to Gad `var (...)` statement)
+// =============================================================================
+
+type VarStmt struct {
+	ast.NodeData
+	NodePos source.Pos
+	NodeEnd source.Pos
+	Decls   []VarDecl
+}
+
+func (s *VarStmt) Pos() source.Pos { return s.NodePos }
+func (s *VarStmt) End() source.Pos { return s.NodeEnd }
+func (s *VarStmt) StmtNode()       {}
+func (s *VarStmt) String() string  { return "giom.Var" }
+
+func (s *VarStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	ctx.WriteString("var (")
+	for i, d := range s.Decls {
+		if i > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.WriteString(d.Name)
+		if d.Init != nil {
+			ctx.WriteString(" = ")
+			d.Init.WriteCode(ctx)
+		}
+	}
+	ctx.WriteString(")")
+}
+
 // GlobalStmt — @global declaration (compiles to Gad `global (...)` statements)
 // =============================================================================
 
@@ -733,6 +771,7 @@ var (
 	_ gnode.Stmt = (*SlotPassStmt)(nil)
 	_ gnode.Stmt = (*WrapStmt)(nil)
 	_ gnode.Stmt = (*MatchStmt)(nil)
+	_ gnode.Stmt = (*VarStmt)(nil)
 	_ gnode.Stmt = (*GlobalStmt)(nil)
 	_ gnode.Stmt = (*ExportStmt)(nil)
 )

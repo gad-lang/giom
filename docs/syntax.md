@@ -197,16 +197,24 @@ All forms compile to Gad `import()` calls. Destructured imports generate a
 curly-destructure assignment (`{...} := import("...")`), which is handled by
 Gad's built-in destructuring compiler.
 
-## Globals
+## Variable Declarations
 
-Declare globals in Gad code sections or provide them through the Go symbol table.
-The CMS example passes one global named `Model`.
+Declare mutable variables with `@var`. Supports comma-separated declarations
+and optional initializer expressions.
 
 ```giom
-~~
-global (Model)
-~~
-
-@main
-    h1 {= Model.Title}
+@var a, b = {name: "test"}, x
 ```
+
+Compiles to Gad `var (a, b={name: "test"}, x)`.
+
+## Globals
+
+Declare globals using `@global` followed by space-separated names.
+
+```giom
+@global Model User
+```
+
+Compiles to Gad `global (Model, User)`. Globals can also be provided through
+the Go symbol table — the CMS example passes one global named `Model`.

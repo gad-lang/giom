@@ -100,6 +100,8 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertCompCall(st)
 	case *MatchStmt:
 		return convertMatch(st)
+	case *VarStmt:
+		return convertVar(st)
 	case *GlobalStmt:
 		return convertGlobal(st)
 	case *ExportStmt:
@@ -357,6 +359,29 @@ func convertExport(e *ExportStmt) gnode.Stmts {
 			KeyExpr:   gnode.EIdent(e.Name, e.Pos()),
 			ValueExpr: e.Value,
 		},
+	}
+}
+
+func convertVar(s *VarStmt) gnode.Stmts {
+	var specs []gnode.Spec
+	for _, d := range s.Decls {
+		var vals []gnode.Expr
+		if d.Init != nil {
+			vals = append(vals, d.Init)
+		}
+		specs = append(specs, gnode.NewValueSpec(
+			[]*gnode.IdentExpr{gnode.EIdent(d.Name, s.Pos())},
+			vals,
+		))
+	}
+	return gnode.Stmts{
+		gnode.SDecl(&gnode.GenDecl{
+			Tok:    token.Var,
+			TokPos: s.Pos(),
+			Lparen: s.Pos(),
+			Rparen: s.End(),
+			Specs:  specs,
+		}),
 	}
 }
 

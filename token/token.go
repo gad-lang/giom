@@ -33,6 +33,7 @@ const (
 	Case
 	Export
 	Global
+	Var
 	tokMax
 )
 
@@ -65,6 +66,7 @@ var tokNames = [...]string{
 	Case:         "CASE",
 	Export:       "EXPORT",
 	Global:       "GLOBAL",
+	Var:          "VAR",
 }
 
 // String returns a human-readable name for a giom token.

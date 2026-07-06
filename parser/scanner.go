@@ -101,6 +101,9 @@ func (s *scanner) Scan() (t gadparser.PToken) {
 		if tok := s.scanGlobal(); tok.Valid() {
 			return tok
 		}
+		if tok := s.scanVar(); tok.Valid() {
+			return tok
+		}
 		if tok := s.scanFunc(); tok.Valid() {
 			return tok
 		}
@@ -574,6 +577,16 @@ func (s *scanner) scanGlobal() gadparser.PToken {
 	if sm := rgxGlobal.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		return s.newToken(giomtoken.Global, sm[0], sm[1])
+	}
+	return gadparser.PToken{}
+}
+
+var rgxVar = regexp.MustCompile(`^@var\s+(.+)$`)
+
+func (s *scanner) scanVar() gadparser.PToken {
+	if sm := rgxVar.FindStringSubmatch(s.buffer); len(sm) != 0 {
+		s.consume(len(sm[0]))
+		return s.newToken(giomtoken.Var, sm[0], sm[1])
 	}
 	return gadparser.PToken{}
 }

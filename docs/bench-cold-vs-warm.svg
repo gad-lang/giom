@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500">
+  <rect width="900" height="500" fill="#ffffff"/>
+  <text x="450" y="30" text-anchor="middle" font-family="monospace" font-size="16" font-weight="bold" fill="#333">Cold vs Warm Render Time (lower is better)</text>
+  <line x1="100" y1="390" x2="860" y2="390" stroke="#eee" stroke-width="1"/>
+  <text x="92" y="394" text-anchor="end" font-family="monospace" font-size="11" fill="#999">0</text>
+  <line x1="100" y1="317" x2="860" y2="317" stroke="#eee" stroke-width="1"/>
+  <text x="92" y="321" text-anchor="end" font-family="monospace" font-size="11" fill="#999">600</text>
+  <line x1="100" y1="243" x2="860" y2="243" stroke="#eee" stroke-width="1"/>
+  <text x="92" y="247" text-anchor="end" font-family="monospace" font-size="11" fill="#999">1200</text>
+  <line x1="100" y1="170" x2="860" y2="170" stroke="#eee" stroke-width="1"/>
+  <text x="92" y="174" text-anchor="end" font-family="monospace" font-size="11" fill="#999">1800</text>
+  <line x1="100" y1="96" x2="860" y2="96" stroke="#eee" stroke-width="1"/>
+  <text x="92" y="100" text-anchor="end" font-family="monospace" font-size="11" fill="#999">2400</text>
+  <rect x="148" y="70" width="86" height="320" fill="#E8734A" rx="2" ry="2"/>
+  <text x="190" y="65" text-anchor="middle" font-family="monospace" font-size="10" fill="#E8734A">2608µs</text>
+  <rect x="242" y="256" width="86" height="134" fill="#4CAF50" rx="2" ry="2"/>
+  <text x="285" y="251" text-anchor="middle" font-family="monospace" font-size="10" fill="#4CAF50">1094µs</text>
+  <text x="242" y="415" text-anchor="end" font-family="monospace" font-size="11" fill="#333" transform="rotate(-30,242,405)">index</text>
+  <text x="233" y="410" text-anchor="middle" font-family="monospace" font-size="10" fill="#666">2.4×</text>
+  <rect x="338" y="128" width="86" height="262" fill="#E8734A" rx="2" ry="2"/>
+  <text x="380" y="123" text-anchor="middle" font-family="monospace" font-size="10" fill="#E8734A">2138µs</text>
+  <rect x="432" y="297" width="86" height="93" fill="#4CAF50" rx="2" ry="2"/>
+  <text x="475" y="292" text-anchor="middle" font-family="monospace" font-size="10" fill="#4CAF50">757µs</text>
+  <text x="432" y="415" text-anchor="end" font-family="monospace" font-size="11" fill="#333" transform="rotate(-30,432,405)">page</text>
+  <text x="423" y="410" text-anchor="middle" font-family="monospace" font-size="10" fill="#666">2.8×</text>
+  <rect x="528" y="120" width="86" height="270" fill="#E8734A" rx="2" ry="2"/>
+  <text x="570" y="115" text-anchor="middle" font-family="monospace" font-size="10" fill="#E8734A">2203µs</text>
+  <rect x="622" y="285" width="86" height="105" fill="#4CAF50" rx="2" ry="2"/>
+  <text x="665" y="280" text-anchor="middle" font-family="monospace" font-size="10" fill="#4CAF50">853µs</text>
+  <text x="622" y="415" text-anchor="end" font-family="monospace" font-size="11" fill="#333" transform="rotate(-30,622,405)">post</text>
+  <text x="613" y="410" text-anchor="middle" font-family="monospace" font-size="10" fill="#666">2.6×</text>
+  <rect x="718" y="109" width="86" height="281" fill="#E8734A" rx="2" ry="2"/>
+  <text x="760" y="104" text-anchor="middle" font-family="monospace" font-size="10" fill="#E8734A">2292µs</text>
+  <rect x="812" y="259" width="86" height="131" fill="#4CAF50" rx="2" ry="2"/>
+  <text x="855" y="254" text-anchor="middle" font-family="monospace" font-size="10" fill="#4CAF50">1066µs</text>
+  <text x="812" y="415" text-anchor="end" font-family="monospace" font-size="11" fill="#333" transform="rotate(-30,812,405)">tag</text>
+  <text x="803" y="410" text-anchor="middle" font-family="monospace" font-size="10" fill="#666">2.2×</text>
+  <rect x="700" y="55" width="12" height="12" fill="#E8734A" rx="2"/>
+  <text x="716" y="65" font-family="monospace" font-size="11" fill="#333">Cold (first render)</text>
+  <rect x="700" y="72" width="12" height="12" fill="#4CAF50" rx="2"/>
+  <text x="716" y="82" font-family="monospace" font-size="11" fill="#333">Warm (cached)</text>
+</svg>

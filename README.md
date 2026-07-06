@@ -129,9 +129,17 @@ the database from `seed.yaml` only when `cms.db` does not already exist.
 
 ## Benchmarks (CMS Example)
 
-Results from `examples/cms` on AMD Ryzen 7 5700G (3 runs, 500ms benchtime each).
+Results from `examples/cms` on AMD Ryzen 7 5700G.
 
-### Warm (Cached) Template Routes
+### Cold vs Warm Render Time
+
+<img src="docs/bench-cold-vs-warm.svg" width="700" alt="Cold vs Warm render time chart">
+
+Bytecode caching reduces render time by 2–3× across all template types.
+Cold (first) render includes compilation; warm (subsequent) renders reuse
+cached bytecode. Run with `go test -bench=BenchmarkColdVsWarmChart ./examples/cms`.
+
+### Warm (Cached) Template Routes (500ms benchtime, 3 runs)
 
 | Route | ns/op | B/op | allocs/op |
 |---|---|---|---|

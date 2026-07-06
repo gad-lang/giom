@@ -70,18 +70,18 @@ p
 ## Expressions
 
 ```giom
-h1 #{= Model.Title}
-p #{= "Hello " + User.Name}
+h1 {= Model.Title}
+p {= "Hello " + User.Name}
 ```
 
-Use Gad expressions inside `#{= ...}`.
+Use Gad expressions inside `{= ...}`.
 
 ## Raw HTML Values
 
 If the application passes a `gad.RawStr`, Giom writes it without escaping.
 
 ```giom
-article #{= Post.Body}
+article {= Post.Body}
 ```
 
 Use raw values only for trusted HTML.
@@ -104,7 +104,7 @@ const title = "Hello"
 ~~
 
 @main
-    h1 #{= title}
+    h1 {= title}
 ```
 
 ## Variables And Assignment
@@ -112,7 +112,7 @@ const title = "Hello"
 ```giom
 @main
     @assign total = len(Items)
-    p #{= total + " items"}
+    p {= total + " items"}
 ```
 
 Depending on parser form, assignment can also be represented by Gad code inside
@@ -122,7 +122,7 @@ Depending on parser form, assignment can also be represented by Gad code inside
 
 ```giom
 @if User
-    p Welcome #{= User.Name}
+    p Welcome {= User.Name}
 @else
     p Welcome guest
 ```
@@ -132,7 +132,7 @@ Depending on parser form, assignment can also be represented by Gad code inside
 ```giom
 ul
     @for item in Items
-        li #{= item.Title}
+        li {= item.Title}
 ```
 
 ## Empty States
@@ -141,7 +141,7 @@ ul
 @if Posts
     div.grid
         @for post in Posts
-            article.card #{= post.Title}
+            article.card {= post.Title}
 @else
     p No posts yet.
 ```
@@ -208,5 +208,5 @@ global (Model)
 ~~
 
 @main
-    h1 #{= Model.Title}
+    h1 {= Model.Title}
 ```

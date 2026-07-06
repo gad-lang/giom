@@ -8,26 +8,26 @@ const page_css = `:root{color-scheme:light;--ink:#172033;--muted:#667085;--line:
     header.topbar
         div.container.nav
             a.brand[href="/"]
-                #{= Model.SiteTitle}
+                {= Model.SiteTitle}
             nav.menu
                 @for item in Model.Menu
                     a[href=item.URL]
-                        #{= item.Label}
+                        {= item.Label}
                 a[href="/admin"] Admin
 
 @export comp breadcrumbs()
     div.container.breadcrumbs
         @for c in Model.Breadcrumbs
             a[href=c.URL]
-                #{= c.Label}
+                {= c.Label}
             span / 
 
 @export comp hero(title, summary; cover="")
     section.hero
         div.container.hero-card
             div
-                h1 #{= title}
-                p #{= summary}
+                h1 {= title}
+                p {= summary}
             @if cover
                 img.cover[src=cover][alt=title]
 
@@ -38,12 +38,12 @@ const page_css = `:root{color-scheme:light;--ink:#172033;--muted:#667085;--line:
         div.body
             h2
                 a[href=post.URL]
-                    #{= post.Title}
-            p #{= post.Summary}
+                    {= post.Title}
+            p {= post.Summary}
             div.tags
                 @for tag in post.Tags
                     a.tag[href=tag.URL]
-                        #{= tag.Name}
+                        {= tag.Name}
 
 @export comp gallery(images)
     @if images
@@ -62,8 +62,8 @@ const page_css = `:root{color-scheme:light;--ink:#172033;--muted:#667085;--line:
 @export comp page_footer()
     footer.footer
         div.container
-            | #{="Powered by Go, GORM, SQLite, React, and GION/v2 · "}
-            #{= Model.Year}
+            | {="Powered by Go, GORM, SQLite, React, and GION/v2 · "}
+            {= Model.Year}
 
 @export comp page_wrapper(title)
     !!! 5
@@ -72,8 +72,8 @@ const page_css = `:root{color-scheme:light;--ink:#172033;--muted:#667085;--line:
             meta[charset="utf-8"]
             meta[name="viewport"][content="width=device-width,initial-scale=1"]
             title
-                | #{= title + " · " + Model.SiteTitle}
-            style #{= page_css}
+                | {= title + " · " + Model.SiteTitle}
+            style {= page_css}
         body
             +topbar()
             +breadcrumbs()

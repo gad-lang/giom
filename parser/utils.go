@@ -9,7 +9,7 @@ import (
 )
 
 // parseGad parses a GAD expression string using gad's parser.
-// If textMode is true, uses mixed mode with #{...} delimiters.
+// If textMode is true, uses mixed mode with {...} delimiters.
 func parseGad(s string, file *source.File, textMode bool) (_ node.Stmts, err error) {
 	po := &gadparser.ParserOptions{
 		Mode: gadparser.ParseConfigDisabled,
@@ -18,7 +18,7 @@ func parseGad(s string, file *source.File, textMode bool) (_ node.Stmts, err err
 
 	if textMode {
 		po.Mode |= gadparser.ParseMixed | gadparser.ParseMixedExprAsValue
-		so.MixedDelimiter.Start = []rune("#{")
+		so.MixedDelimiter.Start = []rune("{")
 		so.MixedDelimiter.End = []rune("}")
 	}
 

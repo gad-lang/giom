@@ -23,10 +23,10 @@ import (
 
 ```giom
 @main
-    p Hello #{= Name}
+    p Hello {= Name}
 ```
 
-The template renders one paragraph. `#{= Name}` writes the value of the `Name`
+The template renders one paragraph. `{= Name}` writes the value of the `Name`
 global.
 
 Expected output:
@@ -39,7 +39,7 @@ Expected output:
 
 ```go
 src := []byte(`@main
-    p Hello #{= Name}
+    p Hello {= Name}
 `)
 
 builtins := giom.AppendBuiltins(gad.NewBuiltins())
@@ -80,7 +80,7 @@ templates/
 
 @main
     +page("Home")
-        h1 #{= Model.Title}
+        h1 {= Model.Title}
 ```
 
 Your application can resolve `@import` lines before compilation, then call
@@ -90,7 +90,7 @@ Your application can resolve `@import` lines before compilation, then call
 
 - A line like `div.card` emits an HTML tag.
 - Indentation defines tag bodies and control-flow bodies.
-- `#{= expr}` writes a Gad expression.
+- `{= expr}` writes a Gad expression.
 - `@main` marks the executable template body.
 - `@export comp name(...)` defines a reusable component.
 - `+name(...)` calls a component.

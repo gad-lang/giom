@@ -28,7 +28,7 @@ and old samples were removed.
             title Hello
         body
             main.container
-                h1 #{= Title}
+                h1 {= Title}
                 p Welcome to Giom.
 ```
 
@@ -39,7 +39,7 @@ and old samples were removed.
     !!! 5
     html
         head
-            title #{= title}
+            title {= title}
         body
             @slot main
 
@@ -64,7 +64,7 @@ import (
 
 func main() {
     src := []byte(`@main
-    p Hello #{= Name}
+    p Hello {= Name}
 `)
 
     builtins := giom.AppendBuiltins(gad.NewBuiltins())

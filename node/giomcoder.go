@@ -65,7 +65,7 @@ func (t *TextStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 		case *gnode.MixedTextStmt:
 			ctx.WriteLine("| " + s.String())
 		case *gnode.MixedValueStmt:
-			ctx.WriteLine("| #{" + s.String() + "}")
+			ctx.WriteLine("| {" + s.String() + "}")
 		default:
 			ctx.WriteLine("| " + s.String())
 		}

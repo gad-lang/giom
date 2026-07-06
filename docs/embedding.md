@@ -106,7 +106,7 @@ Template:
 
 ```giom
 @main
-    h1 #{= Model.Title}
+    h1 {= Model.Title}
 ```
 
 ## Trusted HTML
@@ -120,7 +120,7 @@ model := gad.Dict{
 Template:
 
 ```giom
-article #{= Model.Body}
+article {= Model.Body}
 ```
 
 Only use `gad.RawStr` for trusted content.

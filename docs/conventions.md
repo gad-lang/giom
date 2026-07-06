@@ -25,18 +25,18 @@ Use `gorm:"-"` tags on model fields that should not be persisted but are needed 
 
 ## Template output — raw HTML
 
-**Use `#{=raw expr}` for template expressions that contain HTML markup.**
+**Use `{=raw expr}` for template expressions that contain HTML markup.**
 
 The `raw` directive outputs the value without HTML escaping. Use it for `Body`, `RightBody`, or any field that contains pre-rendered HTML.
 
 | Expression | Escaping | Use case |
 |---|---|---|
-| `#{= expr}` | Escaped | Plain text, user-controlled strings |
-| `#{=raw expr}` | Unescaped | HTML content (Body, RightBody) |
+| `{= expr}` | Escaped | Plain text, user-controlled strings |
+| `{=raw expr}` | Unescaped | HTML content (Body, RightBody) |
 
 ```giom
 section.page-body
-    #{=raw Model.Page.Body}
+    {=raw Model.Page.Body}
 ```
 
 ## Template imports

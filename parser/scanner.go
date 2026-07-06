@@ -54,7 +54,7 @@ func newScanner(file *source.File, r io.Reader) *scanner {
 		line:        -1,
 		col:         0,
 		mixedDelimiter: gadparser.MixedDelimiter{
-			Start: []rune("#{"),
+			Start: []rune("{"),
 			End:   []rune("}"),
 		},
 	}

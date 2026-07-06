@@ -24,8 +24,8 @@ global (Model)
 ~~
 
 @main
-    h1 #{= Model.Title}
-    p #{= Model.Summary}
+    h1 {= Model.Title}
+    p {= Model.Summary}
 ```
 
 Model shape:
@@ -42,13 +42,13 @@ gad.Dict{
 ```giom
 @main
     section.hero
-        h1 #{= Model.Title}
+        h1 {= Model.Title}
     div.grid
         @for post in Model.Posts
             article.card
                 h2
-                    a[href=post.URL] #{= post.Title}
-                p #{= post.Summary}
+                    a[href=post.URL] {= post.Title}
+                p {= post.Summary}
 ```
 
 ## Blog Post
@@ -56,9 +56,9 @@ gad.Dict{
 ```giom
 @main
     article.post
-        h1 #{= Post.Title}
-        p.meta #{= Post.PublishedAt}
-        div.body #{= Post.Body}
+        h1 {= Post.Title}
+        p.meta {= Post.PublishedAt}
+        div.body {= Post.Body}
 ```
 
 ## Navigation Menu
@@ -67,7 +67,7 @@ gad.Dict{
 @export comp menu(items)
     nav.menu
         @for item in items
-            a[href=item.URL] #{= item.Label}
+            a[href=item.URL] {= item.Label}
 
 @main
     +menu(Model.Menu)
@@ -79,7 +79,7 @@ gad.Dict{
 @export comp breadcrumbs(items)
     nav.breadcrumbs[aria-label="Breadcrumb"]
         @for item in items
-            a[href=item.URL] #{= item.Label}
+            a[href=item.URL] {= item.Label}
             span / 
 ```
 
@@ -89,7 +89,7 @@ gad.Dict{
 @if Model.Posts
     div.grid
         @for post in Model.Posts
-            article.card #{= post.Title}
+            article.card {= post.Title}
 @else
     section.empty
         h2 No posts yet
@@ -100,7 +100,7 @@ gad.Dict{
 
 ```giom
 @export comp button(label; href="#", variant="primary")
-    a.button[href=href][class="button--" + variant] #{= label}
+    a.button[href=href][class="button--" + variant] {= label}
 ```
 
 ## Form Field
@@ -108,7 +108,7 @@ gad.Dict{
 ```giom
 @export comp field(label, name; type="text", value="", required=false)
     label.field
-        span #{= label}
+        span {= label}
         input[type=type][name=name][value=value][required=required]
 ```
 
@@ -129,7 +129,7 @@ form[action="/signup"][method="post"]
             @slot sidebar
                 a[href="/"] Home
         main.panel
-            h1 #{= title}
+            h1 {= title}
             @slot main
 
 @main
@@ -151,8 +151,8 @@ table.table
     tbody
         @for row in Rows
             tr
-                td #{= row.Title}
-                td #{= row.Status}
+                td {= row.Title}
+                td {= row.Status}
 ```
 
 ## Gallery
@@ -173,7 +173,7 @@ table.table
         nav.pager
             @if pager.HasPrev
                 a[href=pager.PrevURL] Previous
-            span Page #{= pager.Page} of #{= pager.TotalPages}
+            span Page {= pager.Page} of {= pager.TotalPages}
             @if pager.HasNext
                 a[href=pager.NextURL] Next
 ```
@@ -189,8 +189,8 @@ const css = `body{font-family:system-ui;margin:0}.container{max-width:960px;marg
     !!! 5
     html
         head
-            title #{= title}
-            style #{= css}
+            title {= title}
+            style {= css}
         body
             main.container
                 @slot main

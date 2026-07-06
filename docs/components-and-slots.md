@@ -8,7 +8,7 @@ arguments, named arguments, and slot content.
 ```giom
 @export comp button(label; href="#", kind="primary")
     a.btn[href=href][class="btn--" + kind]
-        #{= label}
+        {= label}
 ```
 
 Call it:
@@ -25,7 +25,7 @@ Call it:
     !!! 5
     html[lang="en"]
         head
-            title #{= title}
+            title {= title}
         body
             header.site-header
                 a[href="/"] Home
@@ -54,7 +54,7 @@ Component:
             @slot sidebar
                 p Default sidebar
         main
-            h1 #{= title}
+            h1 {= title}
             @slot main
 ```
 
@@ -75,7 +75,7 @@ Caller:
 ```giom
 @export comp empty_state(title)
     section.empty
-        h2 #{= title}
+        h2 {= title}
         @slot main
             p Nothing to show yet.
 ```
@@ -90,12 +90,12 @@ If the caller does not pass content, the default slot body is rendered.
         @for item in items
             li
                 @slot item(item)
-                    #{= item}
+                    {= item}
 
 @main
     +list(Posts)
         @slot #item(post)
-            a[href=post.URL] #{= post.Title}
+            a[href=post.URL] {= post.Title}
 ```
 
 ## Card Component
@@ -105,9 +105,9 @@ If the caller does not pass content, the default slot body is rendered.
     article.card
         h2
             @if href
-                a[href=href] #{= title}
+                a[href=href] {= title}
             @else
-                #{= title}
+                {= title}
         div.card-body
             @slot main
 ```
@@ -116,7 +116,7 @@ Usage:
 
 ```giom
 +card(Post.Title ; href=Post.URL)
-    p #{= Post.Summary}
+    p {= Post.Summary}
 ```
 
 ## Component Libraries

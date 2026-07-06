@@ -34,6 +34,7 @@ const (
 	Export
 	Global
 	Var
+	Const
 	tokMax
 )
 
@@ -67,6 +68,7 @@ var tokNames = [...]string{
 	Export:       "EXPORT",
 	Global:       "GLOBAL",
 	Var:          "VAR",
+	Const:        "CONST",
 }
 
 // String returns a human-readable name for a giom token.

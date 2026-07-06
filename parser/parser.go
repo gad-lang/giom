@@ -131,6 +131,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 		return p.parseGlobal()
 	case giomtoken.Var:
 		return p.parseVar()
+	case giomtoken.Const:
+		return p.parseConst()
 	case giomtoken.Func:
 		return p.parseFunc()
 	case giomtoken.Comp:
@@ -567,6 +569,43 @@ func (p *Parser) parseVar() *giomnode.VarStmt {
 	}
 
 	s := &giomnode.VarStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Decls:   decls,
+	}
+	return s
+}
+
+func (p *Parser) parseConst() *giomnode.ConstStmt {
+	tok := p.Token
+	p.expect(giomtoken.Const)
+
+	rest := strings.TrimSpace(stringData(tok, "value", ""))
+	var decls []giomnode.VarDecl
+
+	if rest != "" {
+		parts := splitTopLevelArgs(rest)
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if idx := topLevelAssignIndex(part); idx >= 0 {
+				name := strings.TrimSpace(part[:idx])
+				initStr := strings.TrimSpace(part[idx+1:])
+				decls = append(decls, giomnode.VarDecl{
+					Name: name,
+					Init: parseExprStr(initStr, tok.Pos),
+				})
+			} else {
+				decls = append(decls, giomnode.VarDecl{
+					Name: part,
+				})
+			}
+		}
+	}
+
+	s := &giomnode.ConstStmt{
 		NodePos: tok.Pos,
 		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
 		Decls:   decls,

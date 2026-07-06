@@ -102,6 +102,8 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertMatch(st)
 	case *VarStmt:
 		return convertVar(st)
+	case *ConstStmt:
+		return convertConst(st)
 	case *GlobalStmt:
 		return convertGlobal(st)
 	case *ExportStmt:
@@ -377,6 +379,29 @@ func convertVar(s *VarStmt) gnode.Stmts {
 	return gnode.Stmts{
 		gnode.SDecl(&gnode.GenDecl{
 			Tok:    token.Var,
+			TokPos: s.Pos(),
+			Lparen: s.Pos(),
+			Rparen: s.End(),
+			Specs:  specs,
+		}),
+	}
+}
+
+func convertConst(s *ConstStmt) gnode.Stmts {
+	var specs []gnode.Spec
+	for _, d := range s.Decls {
+		var vals []gnode.Expr
+		if d.Init != nil {
+			vals = append(vals, d.Init)
+		}
+		specs = append(specs, gnode.NewValueSpec(
+			[]*gnode.IdentExpr{gnode.EIdent(d.Name, s.Pos())},
+			vals,
+		))
+	}
+	return gnode.Stmts{
+		gnode.SDecl(&gnode.GenDecl{
+			Tok:    token.Const,
 			TokPos: s.Pos(),
 			Lparen: s.Pos(),
 			Rparen: s.End(),

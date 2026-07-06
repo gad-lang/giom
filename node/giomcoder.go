@@ -272,6 +272,18 @@ func (s *VarStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 	ctx.WriteLine("@var " + strings.Join(parts, ", "))
 }
 
+func (s *ConstStmt) WriteGiom(ctx *GiomCodeWriteContext) {
+	var parts []string
+	for _, d := range s.Decls {
+		if d.Init != nil {
+			parts = append(parts, fmt.Sprintf("%s = %s", d.Name, exprStr(d.Init)))
+		} else {
+			parts = append(parts, d.Name)
+		}
+	}
+	ctx.WriteLine("@const " + strings.Join(parts, ", "))
+}
+
 func (s *GlobalStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 	ctx.WriteLine("@global " + strings.Join(s.Names, " "))
 }
@@ -305,6 +317,7 @@ var (
 	_ GiomCoder = (*WrapStmt)(nil)
 	_ GiomCoder = (*MatchStmt)(nil)
 	_ GiomCoder = (*VarStmt)(nil)
+	_ GiomCoder = (*ConstStmt)(nil)
 	_ GiomCoder = (*GlobalStmt)(nil)
 	_ GiomCoder = (*ExportStmt)(nil)
 )

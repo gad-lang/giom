@@ -679,6 +679,36 @@ func (s *VarStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 	ctx.WriteString(")")
 }
 
+// ConstStmt — @const declaration (compiles to Gad `const (...)` statement)
+// =============================================================================
+
+type ConstStmt struct {
+	ast.NodeData
+	NodePos source.Pos
+	NodeEnd source.Pos
+	Decls   []VarDecl
+}
+
+func (s *ConstStmt) Pos() source.Pos { return s.NodePos }
+func (s *ConstStmt) End() source.Pos { return s.NodeEnd }
+func (s *ConstStmt) StmtNode()       {}
+func (s *ConstStmt) String() string  { return "giom.Const" }
+
+func (s *ConstStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	ctx.WriteString("const (")
+	for i, d := range s.Decls {
+		if i > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.WriteString(d.Name)
+		if d.Init != nil {
+			ctx.WriteString(" = ")
+			d.Init.WriteCode(ctx)
+		}
+	}
+	ctx.WriteString(")")
+}
+
 // GlobalStmt — @global declaration (compiles to Gad `global (...)` statements)
 // =============================================================================
 
@@ -772,6 +802,7 @@ var (
 	_ gnode.Stmt = (*WrapStmt)(nil)
 	_ gnode.Stmt = (*MatchStmt)(nil)
 	_ gnode.Stmt = (*VarStmt)(nil)
+	_ gnode.Stmt = (*ConstStmt)(nil)
 	_ gnode.Stmt = (*GlobalStmt)(nil)
 	_ gnode.Stmt = (*ExportStmt)(nil)
 )

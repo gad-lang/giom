@@ -77,6 +77,7 @@ func CompileFallback(c *gad.Compiler, nd ast.Node) error {
 		*giomnode.CompCallStmt,
 		*giomnode.MatchStmt,
 		*giomnode.VarStmt,
+		*giomnode.ConstStmt,
 		*giomnode.GlobalStmt,
 		*giomnode.ExportStmt,
 		*giomnode.SlotDecl,

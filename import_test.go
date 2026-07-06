@@ -164,3 +164,21 @@ func TestCompileVarSingle(t *testing.T) {
 @main
     h1 {count}`)
 }
+
+func TestCompileConst(t *testing.T) {
+	compileSrc(t, `@const a, b, c
+@main
+    h1 "Hello"`)
+}
+
+func TestCompileConstWithInit(t *testing.T) {
+	compileSrc(t, `@const a, b = {}, x
+@main
+    h1 "Hello"`)
+}
+
+func TestCompileConstSingle(t *testing.T) {
+	compileSrc(t, `@const name = "test"
+@main
+    h1 {name}`)
+}

@@ -174,6 +174,43 @@ func TestVarNoInit(t *testing.T) {
 	}
 }
 
+func TestConst(t *testing.T) {
+	file := parseLine(t, `@const a, b = {}, x`)
+	if len(file.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
+	}
+	cs, ok := file.Stmts[0].(*giomnode.ConstStmt)
+	if !ok {
+		t.Fatalf("expected *giomnode.ConstStmt, got %T", file.Stmts[0])
+	}
+	if len(cs.Decls) != 3 {
+		t.Fatalf("expected 3 decls, got %d", len(cs.Decls))
+	}
+	if cs.Decls[0].Name != "a" || cs.Decls[0].Init != nil {
+		t.Fatalf("expected a with nil init, got name=%q init=%v", cs.Decls[0].Name, cs.Decls[0].Init)
+	}
+	if cs.Decls[1].Name != "b" || cs.Decls[1].Init == nil {
+		t.Fatalf("expected b with init, got name=%q init=%v", cs.Decls[1].Name, cs.Decls[1].Init)
+	}
+	if cs.Decls[2].Name != "x" || cs.Decls[2].Init != nil {
+		t.Fatalf("expected x with nil init, got name=%q init=%v", cs.Decls[2].Name, cs.Decls[2].Init)
+	}
+}
+
+func TestConstSingle(t *testing.T) {
+	file := parseLine(t, `@const count = 0`)
+	if len(file.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
+	}
+	cs, ok := file.Stmts[0].(*giomnode.ConstStmt)
+	if !ok {
+		t.Fatalf("expected *giomnode.ConstStmt, got %T", file.Stmts[0])
+	}
+	if len(cs.Decls) != 1 || cs.Decls[0].Name != "count" || cs.Decls[0].Init == nil {
+		t.Fatalf("expected [count=0], got %v", cs.Decls)
+	}
+}
+
 func TestVarSingle(t *testing.T) {
 	file := parseLine(t, `@var count = 0`)
 	if len(file.Stmts) != 1 {

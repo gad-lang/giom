@@ -208,6 +208,17 @@ and optional initializer expressions.
 
 Compiles to Gad `var (a, b={name: "test"}, x)`.
 
+## Constant Declarations
+
+Declare immutable constants with `@const`. Supports comma-separated declarations
+and optional initializer expressions.
+
+```giom
+@const a, b = {name: "test"}, x
+```
+
+Compiles to Gad `const (a, b={name: "test"}, x)`.
+
 ## Globals
 
 Declare globals using `@global` followed by space-separated names.

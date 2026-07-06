@@ -29,10 +29,10 @@ const (
 	SlotPass
 	Comp
 	CompCall
-	Switch
+	Match
 	Case
-	Default
 	Export
+	Global
 	tokMax
 )
 
@@ -61,10 +61,10 @@ var tokNames = [...]string{
 	SlotPass:     "SLOT_PASS",
 	Comp:         "COMP",
 	CompCall:     "COMP_CALL",
-	Switch:       "SWITCH",
+	Match:        "MATCH",
 	Case:         "CASE",
-	Default:      "DEFAULT",
 	Export:       "EXPORT",
+	Global:       "GLOBAL",
 }
 
 // String returns a human-readable name for a giom token.

@@ -98,6 +98,9 @@ func (s *scanner) Scan() (t gadparser.PToken) {
 		if tok := s.scanExport(); tok.Valid() {
 			return tok
 		}
+		if tok := s.scanGlobal(); tok.Valid() {
+			return tok
+		}
 		if tok := s.scanFunc(); tok.Valid() {
 			return tok
 		}
@@ -107,13 +110,10 @@ func (s *scanner) Scan() (t gadparser.PToken) {
 		if tok := s.scanCompCall(); tok.Valid() {
 			return tok
 		}
-		if tok := s.scanSwitch(); tok.Valid() {
+		if tok := s.scanMatch(); tok.Valid() {
 			return tok
 		}
 		if tok := s.scanCase(); tok.Valid() {
-			return tok
-		}
-		if tok := s.scanDefault(); tok.Valid() {
 			return tok
 		}
 		if tok := s.scanDoctype(); tok.Valid() {
@@ -568,6 +568,16 @@ func (s *scanner) scanExport() gadparser.PToken {
 	return gadparser.PToken{}
 }
 
+var rgxGlobal = regexp.MustCompile(`^@global\s+(.+)$`)
+
+func (s *scanner) scanGlobal() gadparser.PToken {
+	if sm := rgxGlobal.FindStringSubmatch(s.buffer); len(sm) != 0 {
+		s.consume(len(sm[0]))
+		return s.newToken(giomtoken.Global, sm[0], sm[1])
+	}
+	return gadparser.PToken{}
+}
+
 var rgxFunc = regexp.MustCompile(`^@(export\s+)?func ([a-zA-Z_-]+\w*)(\((.*)\))?$`)
 
 func (s *scanner) scanFunc() gadparser.PToken {
@@ -706,12 +716,12 @@ func (s *scanner) scanComp() gadparser.PToken {
 	return pt
 }
 
-var rgxSwitch = regexp.MustCompile(`^@switch\s+(\S+)\s*$`)
+var rgxMatch = regexp.MustCompile(`^@match\s+(\S+)\s*$`)
 
-func (s *scanner) scanSwitch() gadparser.PToken {
-	if sm := rgxSwitch.FindStringSubmatch(s.buffer); len(sm) != 0 {
+func (s *scanner) scanMatch() gadparser.PToken {
+	if sm := rgxMatch.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		return s.newToken(giomtoken.Switch, sm[0], sm[1])
+		return s.newToken(giomtoken.Match, sm[0], sm[1])
 	}
 	return gadparser.PToken{}
 }
@@ -722,16 +732,6 @@ func (s *scanner) scanCase() gadparser.PToken {
 	if sm := rgxCase.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		return s.newToken(giomtoken.Case, sm[0], sm[1])
-	}
-	return gadparser.PToken{}
-}
-
-var rgxDefault = regexp.MustCompile(`^@default\s*$`)
-
-func (s *scanner) scanDefault() gadparser.PToken {
-	if sm := rgxDefault.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return s.newToken(giomtoken.Default, sm[0], "")
 	}
 	return gadparser.PToken{}
 }

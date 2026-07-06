@@ -614,7 +614,7 @@ func (w *WrapStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 }
 
 // =============================================================================
-// SwitchStmt — switch/case block (compiles to GAD match expression)
+// MatchStmt — match/case block (compiles to GAD match expression)
 // =============================================================================
 
 type CaseClause struct {
@@ -622,7 +622,7 @@ type CaseClause struct {
 	Body gnode.Stmts
 }
 
-type SwitchStmt struct {
+type MatchStmt struct {
 	ast.NodeData
 	NodePos source.Pos
 	NodeEnd source.Pos
@@ -631,16 +631,35 @@ type SwitchStmt struct {
 	Default gnode.Stmts
 }
 
-func (s *SwitchStmt) Pos() source.Pos { return s.NodePos }
-func (s *SwitchStmt) End() source.Pos { return s.NodeEnd }
-func (s *SwitchStmt) StmtNode()       {}
-func (s *SwitchStmt) String() string  { return "giom.Switch" }
+func (s *MatchStmt) Pos() source.Pos { return s.NodePos }
+func (s *MatchStmt) End() source.Pos { return s.NodeEnd }
+func (s *MatchStmt) StmtNode()       {}
+func (s *MatchStmt) String() string  { return "giom.Match" }
 
-func (s *SwitchStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+func (s *MatchStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 	switchMatchExpr(s).WriteCode(ctx)
 }
 
 // =============================================================================
+// GlobalStmt — @global declaration (compiles to Gad `global (...)` statements)
+// =============================================================================
+
+type GlobalStmt struct {
+	ast.NodeData
+	NodePos source.Pos
+	NodeEnd source.Pos
+	Names   []string
+}
+
+func (s *GlobalStmt) Pos() source.Pos { return s.NodePos }
+func (s *GlobalStmt) End() source.Pos { return s.NodeEnd }
+func (s *GlobalStmt) StmtNode()       {}
+func (s *GlobalStmt) String() string  { return "giom.Global" }
+
+func (s *GlobalStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	ctx.WriteString("global (" + strings.Join(s.Names, ", ") + ")")
+}
+
 // ExportStmt — export declaration
 // =============================================================================
 
@@ -713,7 +732,8 @@ var (
 	_ gnode.Stmt = (*SlotDecl)(nil)
 	_ gnode.Stmt = (*SlotPassStmt)(nil)
 	_ gnode.Stmt = (*WrapStmt)(nil)
-	_ gnode.Stmt = (*SwitchStmt)(nil)
+	_ gnode.Stmt = (*MatchStmt)(nil)
+	_ gnode.Stmt = (*GlobalStmt)(nil)
 	_ gnode.Stmt = (*ExportStmt)(nil)
 )
 

@@ -127,6 +127,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 		return p.parseCode()
 	case giomtoken.ImportModule:
 		return p.parseImportModule()
+	case giomtoken.Global:
+		return p.parseGlobal()
 	case giomtoken.Func:
 		return p.parseFunc()
 	case giomtoken.Comp:
@@ -139,10 +141,10 @@ func (p *Parser) parseStmt() gnode.Stmt {
 		return p.parseWrap()
 	case giomtoken.CompCall:
 		return p.parseCompCall()
-	case giomtoken.Switch:
-		return p.parseSwitch()
-	case giomtoken.Case, giomtoken.Default:
-		p.error(fmt.Sprintf("unexpected %s without matching @switch", giomtoken.String(p.Token.Token)))
+	case giomtoken.Match:
+		return p.parseMatch()
+	case giomtoken.Case:
+		p.error(fmt.Sprintf("unexpected %s without matching @match", giomtoken.String(p.Token.Token)))
 		return nil
 	case giomtoken.Export:
 		return p.parseExport()
@@ -510,6 +512,29 @@ func (p *Parser) parseAttribute(pt gadparser.PToken) *giomnode.TagAttribute {
 	return attr
 }
 
+func (p *Parser) parseGlobal() *giomnode.GlobalStmt {
+	tok := p.Token
+	p.expect(giomtoken.Global)
+
+	rest := strings.TrimSpace(stringData(tok, "value", ""))
+	var names []string
+	if rest != "" {
+		for _, name := range strings.Fields(rest) {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+
+	s := &giomnode.GlobalStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Names:   names,
+	}
+	return s
+}
+
 func (p *Parser) parseFunc() *giomnode.FuncDecl {
 	tok := p.Token
 	p.expect(giomtoken.Func)
@@ -720,12 +745,12 @@ func (p *Parser) parseCompCall() *giomnode.CompCallStmt {
 	return call
 }
 
-func (p *Parser) parseSwitch() *giomnode.SwitchStmt {
+func (p *Parser) parseMatch() *giomnode.MatchStmt {
 	tok := p.Token
-	p.expect(giomtoken.Switch)
+	p.expect(giomtoken.Match)
 
 	tagExpr := parseExprStr(stringData(tok, "value", ""), tok.Pos)
-	s := &giomnode.SwitchStmt{
+	s := &giomnode.MatchStmt{
 		NodePos: tok.Pos,
 		Tag:     tagExpr,
 	}
@@ -745,18 +770,18 @@ func (p *Parser) parseSwitch() *giomnode.SwitchStmt {
 			}
 			s.Cases = append(s.Cases, cc)
 			goto next
-		case giomtoken.Default:
-			p.expect(giomtoken.Default)
+		case giomtoken.Else:
+			p.expect(giomtoken.Else)
 			if p.Token.Token == giomtoken.Indent {
 				s.Default = p.parseBlock(s)
 			}
 		default:
-			p.expect(giomtoken.Case, giomtoken.Default, giomtoken.Outdent)
+			p.expect(giomtoken.Case, giomtoken.Else, giomtoken.Outdent)
 		}
 		p.expect(giomtoken.Outdent)
 	}
 
-	s.NodeEnd = switchEnd(s)
+	s.NodeEnd = matchEnd(s)
 	return s
 }
 
@@ -904,7 +929,7 @@ func callEnd(call *giomnode.CompCallStmt) source.Pos {
 	return call.Pos()
 }
 
-func switchEnd(s *giomnode.SwitchStmt) source.Pos {
+func matchEnd(s *giomnode.MatchStmt) source.Pos {
 	if len(s.Default) > 0 {
 		return s.Default[len(s.Default)-1].End()
 	}

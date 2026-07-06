@@ -104,6 +104,34 @@ func TestImportDestructureRest(t *testing.T) {
 	}
 }
 
+func TestGlobal(t *testing.T) {
+	file := parseLine(t, `@global Model User`)
+	if len(file.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
+	}
+	gs, ok := file.Stmts[0].(*giomnode.GlobalStmt)
+	if !ok {
+		t.Fatalf("expected *giomnode.GlobalStmt, got %T", file.Stmts[0])
+	}
+	if len(gs.Names) != 2 || gs.Names[0] != "Model" || gs.Names[1] != "User" {
+		t.Fatalf("expected [Model User], got %v", gs.Names)
+	}
+}
+
+func TestGlobalSingle(t *testing.T) {
+	file := parseLine(t, `@global App`)
+	if len(file.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
+	}
+	gs, ok := file.Stmts[0].(*giomnode.GlobalStmt)
+	if !ok {
+		t.Fatalf("expected *giomnode.GlobalStmt, got %T", file.Stmts[0])
+	}
+	if len(gs.Names) != 1 || gs.Names[0] != "App" {
+		t.Fatalf("expected [App], got %v", gs.Names)
+	}
+}
+
 func TestImportDestructureMixed(t *testing.T) {
 	file := parseLine(t, `@import { a, b: bb, c = 5, **rest } from "comps.giom"`)
 	expectStmtCount(t, file, 1)

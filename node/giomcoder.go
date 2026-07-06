@@ -241,8 +241,8 @@ func (w *WrapStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 	ctx.Depth--
 }
 
-func (s *SwitchStmt) WriteGiom(ctx *GiomCodeWriteContext) {
-	ctx.WriteLine("@switch " + exprStr(s.Tag))
+func (s *MatchStmt) WriteGiom(ctx *GiomCodeWriteContext) {
+	ctx.WriteLine("@match " + exprStr(s.Tag))
 	ctx.Depth++
 	for _, c := range s.Cases {
 		ctx.WriteLine("@case " + exprStr(c.Expr))
@@ -251,12 +251,16 @@ func (s *SwitchStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 		ctx.Depth--
 	}
 	if len(s.Default) > 0 {
-		ctx.WriteLine("@default")
+		ctx.WriteLine("@else")
 		ctx.Depth++
 		ctx.WriteStmts(s.Default)
 		ctx.Depth--
 	}
 	ctx.Depth--
+}
+
+func (s *GlobalStmt) WriteGiom(ctx *GiomCodeWriteContext) {
+	ctx.WriteLine("@global " + strings.Join(s.Names, " "))
 }
 
 func (e *ExportStmt) WriteGiom(ctx *GiomCodeWriteContext) {
@@ -286,7 +290,8 @@ var (
 	_ GiomCoder = (*SlotDecl)(nil)
 	_ GiomCoder = (*SlotPassStmt)(nil)
 	_ GiomCoder = (*WrapStmt)(nil)
-	_ GiomCoder = (*SwitchStmt)(nil)
+	_ GiomCoder = (*MatchStmt)(nil)
+	_ GiomCoder = (*GlobalStmt)(nil)
 	_ GiomCoder = (*ExportStmt)(nil)
 )
 

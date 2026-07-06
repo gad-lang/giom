@@ -146,15 +146,15 @@ ul
     p No posts yet.
 ```
 
-## Switch
+## Match
 
 ```giom
-@switch Status
+@match Status
     @case "draft"
         span.badge Draft
     @case "published"
         span.badge Published
-    @default
+    @else
         span.badge Unknown
 ```
 

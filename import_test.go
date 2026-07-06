@@ -134,3 +134,15 @@ func TestCompileDestructureOnlyImport(t *testing.T) {
         p Body`
 	compileSrc(t, src)
 }
+
+func TestCompileGlobal(t *testing.T) {
+	compileSrc(t, `@global Model User
+@main
+    h1 "Hello"`)
+}
+
+func TestCompileGlobalMultiple(t *testing.T) {
+	compileSrc(t, `@global App Config DB
+@main
+    h1 "Hello"`)
+}

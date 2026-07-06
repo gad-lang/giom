@@ -98,8 +98,10 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertCompDecl(st)
 	case *CompCallStmt:
 		return convertCompCall(st)
-	case *SwitchStmt:
-		return convertSwitch(st)
+	case *MatchStmt:
+		return convertMatch(st)
+	case *GlobalStmt:
+		return convertGlobal(st)
 	case *ExportStmt:
 		return convertExport(st)
 	case *SlotDecl:
@@ -323,11 +325,11 @@ func slotPassName(sp *SlotPassStmt) string {
 	return "default"
 }
 
-func convertSwitch(s *SwitchStmt) gnode.Stmts {
+func convertMatch(s *MatchStmt) gnode.Stmts {
 	return gnode.Stmts{gnode.SExpr(switchMatchExpr(s))}
 }
 
-func switchMatchExpr(s *SwitchStmt) *gnode.MatchExpr {
+func switchMatchExpr(s *MatchStmt) *gnode.MatchExpr {
 	match := &gnode.MatchExpr{
 		MatchPos: s.Pos(),
 		Expr:     s.Tag,
@@ -355,6 +357,22 @@ func convertExport(e *ExportStmt) gnode.Stmts {
 			KeyExpr:   gnode.EIdent(e.Name, e.Pos()),
 			ValueExpr: e.Value,
 		},
+	}
+}
+
+func convertGlobal(s *GlobalStmt) gnode.Stmts {
+	var specs []gnode.Spec
+	for _, name := range s.Names {
+		specs = append(specs, gnode.NewParamSpec(false,
+			&gnode.TypedIdentExpr{Ident: gnode.EIdent(name, s.Pos())},
+		))
+	}
+	return gnode.Stmts{
+		gnode.SDecl(&gnode.GenDecl{
+			Tok:    token.Global,
+			TokPos: s.Pos(),
+			Specs:  specs,
+		}),
 	}
 }
 

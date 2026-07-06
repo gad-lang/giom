@@ -45,9 +45,9 @@ func TestNewRenderEmpty(t *testing.T) {
 	}
 }
 
-func renderString(r *Render, filePath, globalName string, globalValue gad.Dict) (string, error) {
+func renderString(r *Render, filePath string, globals gad.Dict) (string, error) {
 	var buf bytes.Buffer
-	err := r.Render(&buf, filePath, globalName, globalValue)
+	err := r.Render(&buf, filePath, globals)
 	return buf.String(), err
 }
 
@@ -61,7 +61,7 @@ func TestRenderBasic(t *testing.T) {
 	}
 
 	r := newTestRender(t, dir)
-	out, err := renderString(r, srcPath, "Model", gad.Dict{})
+	out, err := renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,8 @@ func TestRenderWithModel(t *testing.T) {
 	}
 
 	r := newTestRender(t, dir)
-	out, err := renderString(r, srcPath, "Model", gad.Dict{
-		"Title": gad.Str("Home"),
+	out, err := renderString(r, srcPath, gad.Dict{
+		"Model": gad.Dict{"Title": gad.Str("Home")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestRenderCachesBytecode(t *testing.T) {
 	})
 
 	// First render compiles.
-	out1, err := renderString(r, srcPath, "Model", gad.Dict{})
+	out1, err := renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestRenderCachesBytecode(t *testing.T) {
 	}
 
 	// Second render uses cache — no compile.
-	out2, err := renderString(r, srcPath, "Model", gad.Dict{})
+	out2, err := renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestRenderRecompilesOnFileChange(t *testing.T) {
 	})
 
 	// First render.
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if !lastFirst {
@@ -176,7 +176,7 @@ func TestRenderRecompilesOnFileChange(t *testing.T) {
 
 	// Render immediately — change is detected but not yet compiled (debounce).
 	r.TemplateDelay = 50 * time.Millisecond
-	out, err := renderString(r, srcPath, "Model", gad.Dict{})
+	out, err := renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestRenderRecompilesOnFileChange(t *testing.T) {
 
 	// Wait for debounce, then render again to trigger recompile.
 	time.Sleep(60 * time.Millisecond)
-	out, err = renderString(r, srcPath, "Model", gad.Dict{})
+	out, err = renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestRenderFileChangeDetectsImportedFile(t *testing.T) {
 	})
 
 	// First render.
-	if _, err := renderString(r, tplPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, tplPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -242,7 +242,7 @@ func TestRenderFileChangeDetectsImportedFile(t *testing.T) {
 	writeFileWithMtime(t, compPath, ``, baseTime.Add(time.Hour))
 
 	// First post-change render — stamps changedAt, no recompile yet.
-	if _, err := renderString(r, tplPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, tplPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if n := compileCount.Load(); n != 1 {
@@ -251,7 +251,7 @@ func TestRenderFileChangeDetectsImportedFile(t *testing.T) {
 
 	// Wait for debounce, then render again to trigger recompile.
 	time.Sleep(15 * time.Millisecond)
-	if _, err := renderString(r, tplPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, tplPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if n := compileCount.Load(); n != 2 {
@@ -297,7 +297,7 @@ func TestRenderCallbackReceivesRelativePaths(t *testing.T) {
 		changed = f
 	})
 
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if mainFile != "sub/nested.giom" {
@@ -323,7 +323,7 @@ func TestRenderCallbackCompileError(t *testing.T) {
 		callbackErr = err
 	})
 
-	_, err := renderString(r, srcPath, "Model", gad.Dict{})
+	_, err := renderString(r, srcPath, gad.Dict{})
 	if err == nil {
 		t.Fatal("expected compile error for undefined variable")
 	}
@@ -343,7 +343,7 @@ func TestRenderOldCachePreservedOnCompileError(t *testing.T) {
 	r := newTestRender(t, dir)
 
 	// First successful render.
-	out, err := renderString(r, srcPath, "Model", gad.Dict{})
+	out, err := renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,14 +356,14 @@ func TestRenderOldCachePreservedOnCompileError(t *testing.T) {
     p {= undefinedVar}`, baseTime.Add(time.Hour))
 
 	// First post-change render — stamps changedAt, serves stale cache.
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err) // should succeed with stale cache
 	}
 
 	// Wait for debounce, then render again — should trigger compile error.
 	r.TemplateDelay = 10 * time.Millisecond
 	time.Sleep(15 * time.Millisecond)
-	_, err = renderString(r, srcPath, "Model", gad.Dict{})
+	_, err = renderString(r, srcPath, gad.Dict{})
 	if err == nil {
 		t.Fatal("expected compile error")
 	}
@@ -374,7 +374,7 @@ func TestRenderOldCachePreservedOnCompileError(t *testing.T) {
     p Hello`, baseTime.Add(2*time.Hour))
 	time.Sleep(15 * time.Millisecond)
 
-	out, err = renderString(r, srcPath, "Model", gad.Dict{})
+	out, err = renderString(r, srcPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestRenderMultipleCallbacks(t *testing.T) {
 		c2.Add(1)
 	})
 
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if c1.Load() != 1 || c2.Load() != 1 {
@@ -428,7 +428,7 @@ func TestRenderCallbackLastTime(t *testing.T) {
 	})
 
 	// First render.
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if !firstTime.IsZero() {
@@ -440,14 +440,14 @@ func TestRenderCallbackLastTime(t *testing.T) {
     p Changed`, baseTime.Add(time.Hour))
 
 	// First post-change render — stamps changedAt.
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Wait for debounce, then render again to trigger recompile.
 	r.TemplateDelay = 10 * time.Millisecond
 	time.Sleep(15 * time.Millisecond)
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if secondTime.IsZero() {
@@ -478,7 +478,7 @@ func TestRenderEmptyWorkDirFallsBackToFileDir(t *testing.T) {
 
 	r := NewRender("") // empty workDir
 	r.TemplateDelay = 10 * time.Millisecond
-	out, err := renderString(r, tplPath, "Model", gad.Dict{})
+	out, err := renderString(r, tplPath, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +500,7 @@ func TestRenderConcurrent(t *testing.T) {
 	done := make(chan struct{})
 	for i := 0; i < 10; i++ {
 		go func() {
-			_, err := renderString(r, srcPath, "Model", gad.Dict{})
+			_, err := renderString(r, srcPath, gad.Dict{})
 			if err != nil {
 				t.Errorf("concurrent render: %v", err)
 			}
@@ -527,7 +527,7 @@ func TestRenderWithTranspile(t *testing.T) {
 		return transpilePath
 	}
 
-	if _, err := renderString(r, srcPath, "Model", gad.Dict{}); err != nil {
+	if _, err := renderString(r, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -548,7 +548,7 @@ func TestRenderWriterOutput(t *testing.T) {
 	r := newTestRender(t, dir)
 
 	var buf bytes.Buffer
-	if err := r.Render(&buf, srcPath, "Model", gad.Dict{}); err != nil {
+	if err := r.Render(&buf, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 	if buf.String() != "<p>Output test</p>" {
@@ -567,14 +567,14 @@ func TestRenderWriteToNilWriter(t *testing.T) {
 	}
 
 	r := newTestRender(t, dir)
-	if err := r.Render(io.Discard, srcPath, "Model", gad.Dict{}); err != nil {
+	if err := r.Render(io.Discard, srcPath, gad.Dict{}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestRenderFileNotFound(t *testing.T) {
 	r := newTestRender(t, t.TempDir())
-	err := r.Render(io.Discard, "/nonexistent/file.giom", "Model", gad.Dict{})
+	err := r.Render(io.Discard, "/nonexistent/file.giom", gad.Dict{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent file")
 	}
@@ -599,11 +599,11 @@ func TestRenderCacheIsPerFile(t *testing.T) {
 
 	r := newTestRender(t, dir)
 
-	out1, err := renderString(r, p1, "Model", gad.Dict{})
+	out1, err := renderString(r, p1, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	out2, err := renderString(r, p2, "Model", gad.Dict{})
+	out2, err := renderString(r, p2, gad.Dict{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -56,12 +56,12 @@ type Render struct {
 	// If nil, defaults to AppendBuiltins(gad.NewBuiltins()).
 	BuiltinsFunc func() *gad.Builtins
 
-	mu            sync.Mutex
-	compileMu     sync.Mutex
-	templateCache map[string]*templateCacheEntry
-	onRenderFuncs []func(first bool, mainFile string, files []string, lastTime time.Time, err error)
+	mu             sync.Mutex
+	compileMu      sync.Mutex
+	templateCache  map[string]*templateCacheEntry
+	onRenderFuncs  []func(first bool, mainFile string, files []string, lastTime time.Time, err error)
 	cachedBuiltins *gad.Builtins
-	builtinsOnce  sync.Once
+	builtinsOnce   sync.Once
 }
 
 // NewRender creates a Render with the given workDir. Non-empty paths are
@@ -94,9 +94,9 @@ func (r *Render) OnRender(f ...func(first bool, mainFile string, files []string,
 }
 
 // Render reads the Giom template at filePath, compiles or retrieves cached
-// bytecode, and executes it with globalName bound to globalValue, writing
-// the output to out.
-func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue gad.Dict) error {
+// bytecode, and executes it with the keys of globals available as global
+// variables, writing the output to out.
+func (r *Render) Render(out io.Writer, filePath string, globals gad.Dict) error {
 	src, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", filePath, err)
@@ -105,6 +105,11 @@ func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue 
 	delay := r.TemplateDelay
 	if delay <= 0 {
 		delay = 15 * time.Second
+	}
+
+	globalNames := make([]string, 0, len(globals))
+	for name := range globals {
+		globalNames = append(globalNames, name)
 	}
 
 	var (
@@ -140,7 +145,7 @@ func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue 
 	r.mu.Unlock()
 
 	if first || needsCompile {
-		newEntry, cerr := r.compile(filePath, src)
+		newEntry, cerr := r.compile(filePath, src, globalNames)
 		if cerr == nil {
 			newEntry.compiledAt = time.Now()
 			r.mu.Lock()
@@ -167,18 +172,18 @@ func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue 
 	}
 
 	st := gad.NewSymbolTable(entry.builtins.NameSet)
-	if _, err := st.DefineGlobals([]string{globalName}); err != nil {
+	if _, err := st.DefineGlobals(globalNames); err != nil {
 		return err
 	}
 	vm := gad.NewVM(entry.builtins.Build(), entry.bc)
-	_, err = vm.RunOpts(&gad.RunOpts{StdOut: out, Globals: gad.Dict{globalName: globalValue}})
+	_, err = vm.RunOpts(&gad.RunOpts{StdOut: out, Globals: gad.Dict(globals)})
 	if err != nil {
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}
 	return err
 }
 
-func (r *Render) compile(filePath string, src []byte) (*templateCacheEntry, error) {
+func (r *Render) compile(filePath string, src []byte, globalNames []string) (*templateCacheEntry, error) {
 	r.compileMu.Lock()
 	defer r.compileMu.Unlock()
 
@@ -208,7 +213,7 @@ func (r *Render) compile(filePath string, src []byte) (*templateCacheEntry, erro
 	}}
 
 	st := gad.NewSymbolTable(r.cachedBuiltins.NameSet)
-	if _, err := st.DefineGlobals([]string{"Model"}); err != nil {
+	if _, err := st.DefineGlobals(globalNames); err != nil {
 		return nil, err
 	}
 	_, bc, err := Compile(st, src, opts)

@@ -64,8 +64,8 @@ r.TranspilePath = func(src string) string {
 
 ```go
 var out bytes.Buffer
-err := r.Render(&out, "template.giom", "Model", gad.Dict{
-    "Title": gad.Str("Home"),
+err := r.Render(&out, "template.giom", gad.Dict{
+    "Model": gad.Dict{"Title": gad.Str("Home")},
 })
 ```
 
@@ -122,21 +122,29 @@ run steps.
 
 ## Globals
 
-If the template uses `Model`, define it before compilation:
-
-```go
-_, err := st.DefineGlobals([]string{"Model"})
-```
-
-Then pass it at runtime:
+Global variables are defined from the keys of the `gad.Dict` passed to
+`Render`. Both the compile-time symbol table and runtime globals use the
+same names:
 
 ```go
 globals := gad.Dict{
     "Model": gad.Dict{
         "Title": gad.Str("Home"),
     },
+    "User": gad.Dict{
+        "Name": gad.Str("Alice"),
+    },
 }
+
+names := make([]string, 0, len(globals))
+for name := range globals {
+    names = append(names, name)
+}
+st.DefineGlobals(names)
 ```
+
+The cache entry records the global names at compile time so that symbol
+indices are consistent across cache hits.
 
 Template:
 

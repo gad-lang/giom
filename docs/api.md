@@ -97,11 +97,18 @@ type Render struct {
 ### `(*Render) Render`
 
 ```go
-func (r *Render) Render(out io.Writer, filePath, globalName string, globalValue gad.Dict) error
+func (r *Render) Render(out io.Writer, filePath string, globals gad.Dict) error
 ```
 
 Reads `filePath`, compiles (or retrieves cached bytecode), and executes the
-template with `globalName` bound to `globalValue`. The output is written to `out`.
+template with the keys of `globals` available as global variables. The output is
+written to `out`.
+
+```go
+err := r.Render(&out, "post.giom", gad.Dict{
+    "Model": gad.Dict{"Title": gad.Str("Hello")},
+})
+```
 
 Caching tracks all files accessed during compilation (template + imports).
 When a file change is detected, recompilation is deferred by `TemplateDelay`.

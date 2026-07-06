@@ -12,6 +12,7 @@ import (
 	giom "github.com/gad-lang/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestIndexRoute(t *testing.T) {
@@ -200,7 +201,9 @@ func TestResponseContainsNoPanic(t *testing.T) {
 
 func TestEmptyDBDoesNotPanic(t *testing.T) {
 	root := findRoot()
-	db, _ := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "empty.db")), &gorm.Config{})
+	db, _ := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "empty.db")), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	emptyApp := &App{
 		DB:           db,
 		Root:         root,

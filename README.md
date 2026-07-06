@@ -108,6 +108,8 @@ func main() {
 .
 ├── compiler.go          # Giom compiler entry points
 ├── builtins.go          # HTML and write builtins
+├── render.go            # High-level Render struct with caching
+├── importer.go          # FileImporter for @import resolution
 ├── node/                # Giom AST nodes and Gad conversion
 ├── parser/              # Indentation parser and scanner
 ├── token/               # Giom token definitions
@@ -124,6 +126,43 @@ go run .
 
 Open `http://localhost:8080/`. The app creates `cms.db` on first run and seeds
 the database from `seed.yaml` only when `cms.db` does not already exist.
+
+## Benchmarks (CMS Example)
+
+Results from `examples/cms` on AMD Ryzen 7 5700G (3 runs, 500ms benchtime each).
+
+### Warm (Cached) Template Routes
+
+| Route | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| `/` (index) | 1,027,000 | 749,424 | 7,908 |
+| `/pages/about` | 678,287 | 574,279 | 4,438 |
+| `/pages/guides` | 666,918 | 567,403 | 4,271 |
+| `/pages/contact` | 677,064 | 574,323 | 4,438 |
+| `/posts/designing-fast-editorial-pages` | 819,535 | 629,675 | 5,488 |
+| `/posts/sqlite-compact-cms` | 792,234 | 615,586 | 5,157 |
+| `/posts/modern-admin-interfaces` | 806,615 | 617,288 | 5,190 |
+| `/posts/reusable-gion-components` | 809,749 | 621,317 | 5,288 |
+| `/posts/shipping-friendly-first-page` | 795,117 | 619,889 | 5,257 |
+| `/posts/building-gallery-component` | 827,598 | 633,974 | 5,588 |
+| `/tags/design` | 1,053,072 | 706,459 | 6,943 |
+| `/tags/engineering` | 1,038,128 | 700,075 | 6,804 |
+| `/tags/news` | 979,927 | 664,407 | 6,021 |
+| `/tags/tutorials` | 966,278 | 670,582 | 6,154 |
+
+### Multi-Request Benchmarks
+
+| Benchmark | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| SequentialNavigation (14 pages) | 12,001,483 | 9,080,927 | 79,790 |
+| ColdRender (compile + render) | 25,082,682 | 2,338,816 | 28,114 |
+| MixedWorkload (4 pages) | 3,580,932 | 2,701,861 | 25,022 |
+| PostWithRelatedContent (4 posts) | 3,232,344 | 2,515,971 | 21,211 |
+| TagWithPagination (4 tags, page=1) | 4,052,386 | 2,777,445 | 26,019 |
+
+ColdRender creates a fresh server for each iteration (no cache). All others
+share a single server (bytecode cached after first request). Show with
+`go test -bench=. -benchmem ./examples/cms`.
 
 ## Build
 

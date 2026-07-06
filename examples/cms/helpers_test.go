@@ -12,12 +12,15 @@ import (
 	giom "github.com/gad-lang/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-func newTestApp(t *testing.T) *App {
+func newTestApp(t testing.TB) *App {
 	t.Helper()
 	root := findRoot()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "cms_test.db")), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "cms_test.db")), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -43,7 +46,7 @@ func newTestApp(t *testing.T) *App {
 	return app
 }
 
-func newTestServer(t *testing.T) (*App, *http.ServeMux) {
+func newTestServer(t testing.TB) (*App, *http.ServeMux) {
 	t.Helper()
 	app := newTestApp(t)
 	mux := http.NewServeMux()
@@ -66,7 +69,7 @@ func findRoot() string {
 	return "."
 }
 
-func getJSON(t *testing.T, mux *http.ServeMux, route string, v any) {
+func getJSON(t testing.TB, mux *http.ServeMux, route string, v any) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, route, nil)
 	rec := httptest.NewRecorder()
@@ -79,7 +82,7 @@ func getJSON(t *testing.T, mux *http.ServeMux, route string, v any) {
 	}
 }
 
-func assertOK(t *testing.T, rec *httptest.ResponseRecorder) {
+func assertOK(t testing.TB, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())

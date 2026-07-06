@@ -40,6 +40,37 @@ func Render(src []byte, globals gad.Dict) (string, error) {
 }
 ```
 
+## Render Struct (Cached Compilation)
+
+`giom.Render` provides a ready-to-use template engine with bytecode caching and
+automatic recompilation on file changes. It is safe for concurrent use.
+
+```go
+import "github.com/gad-lang/giom"
+
+r := &giom.Render{
+    TemplateDelay: 5 * time.Second, // debounce before recompiling
+    WorkDir:       "./templates",
+    TranspilePath: func(src string) string {
+        return strings.TrimSuffix(src, ".giom") + ".gad"
+    },
+}
+
+var out bytes.Buffer
+err := r.Render(&out, "template.giom", "Model", gad.Dict{
+    "Title": gad.Str("Home"),
+})
+```
+
+The `TemplateDelay` (default 5s) prevents recompilation on rapid file saves.
+`WorkDir` is the base for resolving `@import` lines via `FileImporter`.
+`TranspilePath` is optional — when set, transpiled `.gad` files are written
+for inspection.
+
+Internally, `Render` tracks all files accessed during compilation (the
+template and its imports). If any change is detected, compilation is
+deferred until `TemplateDelay` elapses, then the bytecode is rebuilt.
+
 ## Builtins Rule
 
 Use the same `*gad.Builtins` value for symbol-table creation and VM creation:
@@ -96,41 +127,21 @@ Only use `gad.RawStr` for trusted content.
 
 ## Import Resolution
 
-Giom parses import lines, but applications usually control file loading. A
-simple resolver can inline imports before compilation:
+Giom uses `giom.FileImporter` to resolve `@import` lines during compilation.
+The importer is set via `gad.ModuleMap.SetExtImporter`:
 
 ```go
-var importLine = regexp.MustCompile(`(?m)^@import\s+"([^"]+)"\s*$`)
-
-func resolve(root, name string, seen map[string]bool) (string, error) {
-    clean := filepath.Clean(name)
-    if seen[clean] {
-        return "", nil
-    }
-    seen[clean] = true
-
-    b, err := os.ReadFile(filepath.Join(root, clean))
-    if err != nil {
-        return "", err
-    }
-    src := string(b)
-
-    var imports strings.Builder
-    for _, m := range importLine.FindAllStringSubmatch(src, -1) {
-        part, err := resolve(root, m[1], seen)
-        if err != nil {
-            return "", err
-        }
-        imports.WriteString(part)
-        if !strings.HasSuffix(part, "\n") {
-            imports.WriteByte('\n')
-        }
-    }
-    return imports.String() + importLine.ReplaceAllString(src, ""), nil
-}
+imports := gad.NewModuleMap().SetExtImporter(&giom.FileImporter{
+    WorkDir:       "./templates",
+    FileReader:    os.ReadFile,
+    TranspilePath: nil, // optional: write .gad files for inspection
+})
 ```
 
-The CMS example uses this pattern.
+`FileImporter` also handles named imports (`@import "file.giom" as name`)
+and compiles imported Giom files to Gad bytecode transparently.
+
+The CMS example in `examples/cms` demonstrates this in production.
 
 ## Transpiling For Inspection
 

@@ -9,6 +9,7 @@ import (
 	giom "github.com/gad-lang/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type App struct {
@@ -26,7 +27,9 @@ func NewApp(root string) (*App, error) {
 	_, err := os.Stat(dbPath)
 	firstRun := os.IsNotExist(err)
 
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

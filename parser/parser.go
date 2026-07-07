@@ -793,22 +793,42 @@ func (p *Parser) parseConst() *giomnode.ConstStmt {
 	return s
 }
 
+// parseGadDeclDirective parses the body of a `@var`/`@const` directive. The body
+// (bare or parenthesized) is wrapped in a Gad grouped declaration `kw ( … )` so
+// both single and comma/newline-separated forms parse uniformly and `const`
+// initializer requirements are enforced by Gad. The body is parsed at its
+// original source position so declaration positions are preserved.
 func (p *Parser) parseGadDeclDirective(tok gadparser.PToken, want token.Token) (*gnode.GenDecl, []giomnode.VarDecl) {
-	src := tok.Literal
-	if strings.HasPrefix(src, "@") {
-		src = " " + src[1:]
+	inner := stringData(tok, "value", "")
+	keyword := "var"
+	if want == token.Const {
+		keyword = "const"
 	}
-	if tok.Pos > 1 {
-		src = strings.Repeat(" ", int(tok.Pos)-1) + src
+	prefix := keyword + " ("
+
+	base := noBase
+	if v, ok := tok.GetOk("innerPos"); ok {
+		if pos, ok := v.(source.Pos); ok {
+			if b := pos - source.Pos(len(prefix)); b >= 1 {
+				base = b
+			}
+		}
 	}
-	stmt := mustParseGadFirstStmt(src, p.file, false)
+
+	stmt, err := parseGadFirstStmtAt(prefix+inner+")", base, false)
+	if err != nil {
+		p.Error(tok.Pos, err.Error())
+		return nil, nil
+	}
 	declStmt, ok := stmt.(*gnode.DeclStmt)
 	if !ok {
 		p.Error(tok.Pos, fmt.Sprintf("expected %s declaration", want.String()))
+		return nil, nil
 	}
 	decl, ok := declStmt.Decl.(*gnode.GenDecl)
 	if !ok || decl.Tok != want {
 		p.Error(tok.Pos, fmt.Sprintf("expected %s declaration", want.String()))
+		return nil, nil
 	}
 	normalizeValueSpecValues(decl)
 	return decl, varDeclsFromGenDecl(decl)

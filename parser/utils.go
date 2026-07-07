@@ -71,14 +71,6 @@ func parseGadFirstStmtAt(s string, base source.Pos, mixed bool) (_ node.Stmt, er
 	return stmts[0], nil
 }
 
-func mustParseGadFirstStmt(s string, file *source.File, mixed bool) (stmt node.Stmt) {
-	var err error
-	if stmt, err = parseGadFirstStmt(s, file, mixed); err != nil {
-		panic(err)
-	}
-	return
-}
-
 func parseTextGad(s string) (node.Stmts, error) {
 	return parseTextGadAt(s, noBase)
 }

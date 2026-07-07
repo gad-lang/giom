@@ -472,12 +472,16 @@ func (s *scanner) scanAttribute() gadparser.PToken {
 }
 
 // ensureBracketClosed appends subsequent physical lines to the buffer until the
-// bracket group starting at s.buffer[0] is balanced-closed, or input ends. The
-// separating newline is preserved so buffer offsets stay aligned with file
-// offsets (verbatim), keeping attribute value positions accurate.
-func (s *scanner) ensureBracketClosed() {
+// bracket group starting at s.buffer[0] is balanced-closed, or input ends.
+func (s *scanner) ensureBracketClosed() { s.ensureBalanced(0, '[', ']') }
+
+// ensureBalanced appends subsequent physical lines to the buffer until the group
+// opened at s.buffer[start] is balanced-closed, or input ends. The separating
+// newline is preserved so buffer offsets stay aligned with file offsets
+// (verbatim), keeping value positions accurate across lines.
+func (s *scanner) ensureBalanced(start int, open, close byte) {
 	for {
-		if _, _, ok := s.readBalanced(0, '[', ']'); ok {
+		if _, _, ok := s.readBalanced(start, open, close); ok {
 			return
 		}
 		buf, err := s.reader.ReadString('\n')
@@ -650,41 +654,64 @@ func (s *scanner) scanGlobal() gadparser.PToken {
 }
 
 func (s *scanner) scanVar() gadparser.PToken {
-	if tok := s.scanParenDirective("@var", giomtoken.Var); tok.Valid() {
-		return tok
-	}
-	return gadparser.PToken{}
+	return s.scanDeclDirective("@var", giomtoken.Var)
 }
 
 func (s *scanner) scanConst() gadparser.PToken {
-	if tok := s.scanParenDirective("@const", giomtoken.Const); tok.Valid() {
-		return tok
-	}
-	return gadparser.PToken{}
+	return s.scanDeclDirective("@const", giomtoken.Const)
 }
 
-func (s *scanner) scanParenDirective(prefix string, token token.Token) gadparser.PToken {
+// scanDeclDirective scans `@var`/`@const` declarations in either form:
+//
+//	@var a                 // bare, single
+//	@var a, b, c = 1       // bare, comma-separated (single line)
+//	@var (a               // parenthesized, may span lines up to `)`
+//	    b, c = 2)
+//
+// The declaration text (without the surrounding parentheses, if any) is stored
+// verbatim as the token value together with its absolute base position; the
+// parser wraps it in a Gad grouped declaration.
+func (s *scanner) scanDeclDirective(prefix string, tk token.Token) gadparser.PToken {
 	line := s.buffer
-	if !strings.HasPrefix(line, prefix) {
-		return gadparser.PToken{}
-	}
-	if len(line) <= len(prefix) || line[len(prefix)] != ' ' {
+	if !strings.HasPrefix(line, prefix) || len(line) <= len(prefix) || line[len(prefix)] != ' ' {
 		return gadparser.PToken{}
 	}
 	start := len(prefix)
-	for start < len(line) && line[start] == ' ' {
+	for start < len(s.buffer) && s.buffer[start] == ' ' {
 		start++
 	}
-	if start >= len(line) || line[start] != '(' {
+	if start >= len(s.buffer) {
 		return gadparser.PToken{}
 	}
-	balanced, end, ok := s.readBalanced(start, '(', ')')
-	if !ok || strings.TrimSpace(line[end:]) != "" {
-		return gadparser.PToken{}
+
+	base0 := source.Pos(s.file.Base + s.offset - len(s.buffer) - 1)
+
+	var (
+		inner      string
+		innerStart int
+		consumed   int
+	)
+	if s.buffer[start] == '(' {
+		s.ensureBalanced(start, '(', ')')
+		balanced, end, ok := s.readBalanced(start, '(', ')')
+		if !ok || strings.TrimSpace(s.buffer[end:]) != "" {
+			return gadparser.PToken{}
+		}
+		inner = balanced[1 : len(balanced)-1]
+		innerStart = start + 1
+		consumed = end
+	} else {
+		inner = s.buffer[start:]
+		innerStart = start
+		consumed = len(s.buffer)
 	}
-	lit := line[:end]
-	s.consume(end)
-	return s.newToken(token, lit, strings.TrimSpace(balanced[1:len(balanced)-1]))
+
+	lead := len(inner) - len(strings.TrimLeft(inner, " \t\r\n"))
+	lit := s.buffer[:consumed]
+	s.consume(consumed)
+	pt := s.newToken(tk, lit, strings.TrimSpace(inner))
+	pt.Set("innerPos", base0+source.Pos(innerStart+lead))
+	return pt
 }
 
 var rgxFunc = regexp.MustCompile(`^@(export\s+)?func ([a-zA-Z_-]+\w*)(\((.*)\))?$`)

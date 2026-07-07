@@ -233,25 +233,40 @@ Gad's built-in destructuring compiler.
 
 ## Variable Declarations
 
-Declare mutable variables with `@var`. Supports comma-separated declarations
-and optional initializer expressions.
+Declare mutable variables with `@var`. A single name, a comma-separated list
+(with optional initializers), or a parenthesized group that may span multiple
+lines are all accepted. Indentation inside the parentheses is ignored.
 
 ```giom
-@var a, b = {name: "test"}, x
+@var a                          // single
+@var a, b                       // multiple, no initializers
+@var a, b = {name: "test"}, x   // with an initializer
+
+@var (
+    width = 320
+    height, depth = 0
+)
 ```
 
-Compiles to Gad `var (a, b={name: "test"}, x)`.
+Each form compiles to a Gad grouped declaration, e.g. `var (a, b={name: "test"}, x)`.
 
 ## Constant Declarations
 
-Declare immutable constants with `@const`. Supports comma-separated declarations
-and optional initializer expressions.
+Declare immutable constants with `@const`. It accepts the same single,
+comma-separated and multi-line parenthesized forms as `@var`, but **every
+constant must have an initializer** (a value-less `@const x` is a compile error).
 
 ```giom
-@const a, b = {name: "test"}, x
+@const pi = 3.14
+@const a = 1, b = 2
+
+@const (
+    min = 0
+    max = 100
+)
 ```
 
-Compiles to Gad `const (a, b={name: "test"}, x)`.
+Each form compiles to a Gad grouped declaration, e.g. `const (a=1, b=2)`.
 
 ## Globals
 

@@ -858,17 +858,11 @@ func (s *scanner) scanMatch() gadparser.PToken {
 }
 
 var rgxCase = regexp.MustCompile(`^@case\s+(.+)\s*$`)
-var rgxDefault = regexp.MustCompile(`^@default\s*$`)
 
 func (s *scanner) scanCase() gadparser.PToken {
 	if sm := rgxCase.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		return s.newToken(giomtoken.Case, sm[0], sm[1])
-	}
-	// `@default` is an alias for `@else` inside a `@match` — the default clause.
-	if sm := rgxDefault.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return s.newToken(giomtoken.Else, sm[0], "")
 	}
 	return gadparser.PToken{}
 }

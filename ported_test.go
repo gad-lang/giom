@@ -153,22 +153,19 @@ func TestPorted_CompOverrideMainSlot(t *testing.T) {
 }
 
 // TestPorted_Match ports the upstream @switch/@case/@default test to the current
-// @match/@case syntax. The default clause is written `@default` (an alias of
-// `@else`, which also works).
+// @match/@case/@else syntax (the default clause is `@else`).
 func TestPorted_Match(t *testing.T) {
-	for _, def := range []string{"@default", "@else"} {
-		tpl := "@main\n" +
-			"    @match a\n" +
-			"        @case 1\n" +
-			"            | v1\n" +
-			"        @case 2\n" +
-			"            | v2\n" +
-			"        " + def + "\n" +
-			"            | v0\n"
-		portExpect(t, tpl, "v1", gad.Dict{"a": gad.Int(1)})
-		portExpect(t, tpl, "v2", gad.Dict{"a": gad.Int(2)})
-		portExpect(t, tpl, "v0", gad.Dict{"a": gad.Int(9)})
-	}
+	tpl := "@main\n" +
+		"    @match a\n" +
+		"        @case 1\n" +
+		"            | v1\n" +
+		"        @case 2\n" +
+		"            | v2\n" +
+		"        @else\n" +
+		"            | v0\n"
+	portExpect(t, tpl, "v1", gad.Dict{"a": gad.Int(1)})
+	portExpect(t, tpl, "v2", gad.Dict{"a": gad.Int(2)})
+	portExpect(t, tpl, "v0", gad.Dict{"a": gad.Int(9)})
 }
 
 func TestPorted_RunErrorTrace(t *testing.T) {

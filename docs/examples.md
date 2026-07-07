@@ -112,6 +112,22 @@ gad.Dict{
         input[type=type][name=name][value=value][required=required]
 ```
 
+## Attribute Groups
+
+Group related attributes in one `[ … ]` and let long tags wrap across lines.
+
+```giom
+@export comp card(post)
+    article[
+        class="card"
+        class=post.Featured ? "card--featured" : ""
+        data-id=post.ID
+        aria-label=post.Title
+    ]
+        h3 {= post.Title }
+        a[href=post.URL, rel="bookmark"] Read more
+```
+
 Usage:
 
 ```giom

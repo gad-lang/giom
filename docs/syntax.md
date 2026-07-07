@@ -51,6 +51,40 @@ input[type="email"][name="email"][required]
 
 Attributes can use string literals, variables, or expressions.
 
+### Attribute groups
+
+A single `[ … ]` group may hold multiple attributes, separated by commas or
+newlines — like a GAD `KeyValueArray (; … )`. A group may span several lines up
+to its closing `]`; indentation inside is ignored. Repeated attributes (such as
+`class`) are merged.
+
+```giom
+// one attribute per group (still valid)
+div[class="a"][title="hello"]
+
+// many attributes in one group, comma-separated
+div[class="a", title="hello"]
+
+// mix group forms
+div[class="a"][class="b", title="hello"]
+
+// span multiple lines up to the closing ]
+div[
+    class="a"
+    class="b"
+    title="hello"
+]
+```
+
+Commas and newlines inside strings, parentheses, brackets or braces do not split
+a group, so call arguments and array/dict literals work as attribute values:
+
+```giom
+div[title=join(items, ", "), data-ids=[1, 2, 3]]
+```
+
+A trailing `? condition` applies to every attribute in the group.
+
 ## Text
 
 Inline text:

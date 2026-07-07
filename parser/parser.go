@@ -277,12 +277,17 @@ func (p *Parser) parseTag() *giomnode.TagStmt {
 		Name:    name,
 	}
 
-	// Consume inline attributes (id, class, [attr])
+	// Consume inline attributes (id, class, and `[ … ]` attribute groups).
 	for p.Token.Token == giomtoken.Id ||
 		p.Token.Token == giomtoken.ClassName ||
 		p.Token.Token == giomtoken.Attribute {
-		attr := p.parseInlineAttribute()
-		if attr != nil {
+		if p.Token.Token == giomtoken.Attribute {
+			tok := p.Token
+			p.expect(giomtoken.Attribute)
+			tag.Attributes = append(tag.Attributes, p.parseAttributeGroup(tok)...)
+			continue
+		}
+		if attr := p.parseInlineAttribute(); attr != nil {
 			tag.Attributes = append(tag.Attributes, attr)
 		}
 	}
@@ -328,8 +333,9 @@ func (p *Parser) parseInlineAttribute() *giomnode.TagAttribute {
 		}
 		return attr
 	default:
+		// Attribute groups are handled by parseAttributeGroup in parseTag.
 		p.expect(giomtoken.Attribute)
-		return p.parseAttribute(tok)
+		return nil
 	}
 }
 
@@ -585,25 +591,153 @@ func (p *Parser) parseCompParams(argsStr string, pos source.Pos) *gnode.FuncPara
 // Surviving content below — preserved exactly as-is
 // =============================================================================
 
-func (p *Parser) parseAttribute(pt gadparser.PToken) *giomnode.TagAttribute {
-	name := stringData(pt, "value", pt.Literal)
-	mode := stringData(pt, "mode", "")
-	content := stringData(pt, "content", "")
-	isFlag := stringData(pt, "flag", "") == "true"
+// parseAttributeGroup splits the raw inner text of an attribute group into one
+// or more attributes. Entries are separated by top-level commas or newlines,
+// mirroring GAD KeyValueArray `(; … )`. A trailing `? condition` on the group
+// applies to every attribute in it.
+func (p *Parser) parseAttributeGroup(tok gadparser.PToken) []*giomnode.TagAttribute {
+	inner := stringData(tok, "inner", "")
 
-	attr := &giomnode.TagAttribute{
-		Name:   name,
-		IsRaw:  mode == "raw",
-		IsFlag: isFlag,
+	var cond gnode.Expr
+	if condStr := stringData(tok, "condition", ""); condStr != "" {
+		cond = parseExprStr(condStr, tok.Pos)
 	}
-	if content != "" {
-		if attr.IsRaw {
-			attr.Value = gnode.Str(content, pt.Pos)
-		} else {
-			attr.Value = parseExprStr(content, pt.Pos)
+
+	base := tok.Pos + 1 // byte after the opening '['
+	if v, ok := tok.GetOk("innerPos"); ok {
+		if pos, ok := v.(source.Pos); ok {
+			base = pos
 		}
 	}
+
+	var attrs []*giomnode.TagAttribute
+	for _, span := range splitAttributeEntries(inner) {
+		attr := parseAttributeEntry(inner[span.start:span.end], base+source.Pos(span.start))
+		if attr == nil {
+			continue
+		}
+		if cond != nil {
+			attr.Condition = cond
+		}
+		attrs = append(attrs, attr)
+	}
+	return attrs
+}
+
+// isAttrNameChar reports whether c is valid in an attribute name. Names allow
+// HTML/framework punctuation such as `xlink:href`, `data-x`, `@click`, `v.on`.
+func isAttrNameChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') || c == '_' || c == '-' || c == ':' || c == '@' || c == '.'
+}
+
+// parseAttributeEntry parses a single `name`, `name=value` or `name="raw"`
+// attribute from an entry slice. base is the absolute position of entry[0], so
+// the value expression maps back to the original source.
+func parseAttributeEntry(entry string, base source.Pos) *giomnode.TagAttribute {
+	// Skip leading whitespace, advancing base to keep positions aligned.
+	i := 0
+	for i < len(entry) && (entry[i] == ' ' || entry[i] == '\t' || entry[i] == '\n' || entry[i] == '\r') {
+		i++
+	}
+	nameStart := i
+	for i < len(entry) && isAttrNameChar(entry[i]) {
+		i++
+	}
+	if i == nameStart {
+		return nil
+	}
+	name := entry[nameStart:i]
+
+	j := i
+	for j < len(entry) && (entry[j] == ' ' || entry[j] == '\t' || entry[j] == '\n' || entry[j] == '\r') {
+		j++
+	}
+	if j >= len(entry) || entry[j] != '=' {
+		// Boolean/flag attribute.
+		return &giomnode.TagAttribute{Name: name, IsRaw: true, IsFlag: true}
+	}
+
+	// name = value
+	valOffset := j + 1
+	for valOffset < len(entry) && (entry[valOffset] == ' ' || entry[valOffset] == '\t' || entry[valOffset] == '\n' || entry[valOffset] == '\r') {
+		valOffset++
+	}
+	value := strings.TrimSpace(entry[valOffset:])
+
+	attr := &giomnode.TagAttribute{Name: name}
+	if len(value) >= 2 && strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) {
+		attr.IsRaw = true
+		attr.Value = gnode.Str(value[1:len(value)-1], base+source.Pos(valOffset))
+	} else if value != "" && value != `""` {
+		attr.Value = parseExprStr(value, base+source.Pos(valOffset))
+	}
 	return attr
+}
+
+// attrSpan marks a [start,end) slice of the group's inner text.
+type attrSpan struct{ start, end int }
+
+// splitAttributeEntries splits inner attribute text on top-level commas and
+// newlines, ignoring separators inside strings, parentheses, brackets and
+// braces. Empty spans are dropped.
+func splitAttributeEntries(inner string) []attrSpan {
+	var spans []attrSpan
+	var (
+		paren, bracket, brace int
+		quote                 byte
+		escaped               bool
+		start                 = 0
+	)
+	flush := func(end int) {
+		if strings.TrimSpace(inner[start:end]) != "" {
+			spans = append(spans, attrSpan{start, end})
+		}
+		start = end + 1
+	}
+	for i := 0; i < len(inner); i++ {
+		c := inner[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '(':
+			paren++
+		case ')':
+			if paren > 0 {
+				paren--
+			}
+		case '[':
+			bracket++
+		case ']':
+			if bracket > 0 {
+				bracket--
+			}
+		case '{':
+			brace++
+		case '}':
+			if brace > 0 {
+				brace--
+			}
+		case ',', '\n':
+			if paren == 0 && bracket == 0 && brace == 0 {
+				flush(i)
+			}
+		}
+	}
+	if strings.TrimSpace(inner[start:]) != "" {
+		spans = append(spans, attrSpan{start, len(inner)})
+	}
+	return spans
 }
 
 func (p *Parser) parseGlobal() *giomnode.GlobalStmt {

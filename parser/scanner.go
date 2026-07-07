@@ -422,117 +422,77 @@ func (s *scanner) scanClassName() gadparser.PToken {
 	return gadparser.PToken{}
 }
 
+// scanAttribute scans an attribute group `[ … ]`. A group may hold one or many
+// attributes separated by commas or newlines, like a GAD KeyValueArray
+// `(; … )`, and may span multiple physical lines up to the closing `]`:
+//
+//	div[class="a"]
+//	div[class="a", title="hello"]
+//	div[
+//	    class="a"
+//	    class="b"
+//	    title="hello"
+//	]
+//
+// The raw inner text (between the brackets) is preserved verbatim together with
+// its absolute base position; the parser splits it into individual attributes.
 func (s *scanner) scanAttribute() gadparser.PToken {
 	if !strings.HasPrefix(s.buffer, "[") {
 		return gadparser.PToken{}
 	}
-	nameEnd := 1
-	for nameEnd < len(s.buffer) {
-		c := s.buffer[nameEnd]
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == ':' || c == '@' || c == '.' {
-			nameEnd++
-			continue
-		}
-		break
-	}
-	if nameEnd == 1 {
+	// Pull continuation lines until the group is balanced-closed.
+	s.ensureBracketClosed()
+	group, end, ok := s.readBalanced(0, '[', ']')
+	if !ok {
 		return gadparser.PToken{}
 	}
-	name := s.buffer[1:nameEnd]
-	i := nameEnd
-	for i < len(s.buffer) && (s.buffer[i] == ' ' || s.buffer[i] == '\t') {
-		i++
-	}
-	var content, mode, flag string
-	if i < len(s.buffer) && s.buffer[i] == '=' {
-		i++
-		for i < len(s.buffer) && (s.buffer[i] == ' ' || s.buffer[i] == '\t') {
-			i++
-		}
-		valueStart := i
-		end, ok := s.readAttributeEnd(valueStart)
-		if !ok {
-			return gadparser.PToken{}
-		}
-		value := strings.TrimSpace(s.buffer[valueStart:end])
-		if strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) && len(value) >= 2 {
-			content = value[1 : len(value)-1]
-			mode = "raw"
-		} else if value != `""` {
-			content = value
-			mode = "expression"
-		}
-		i = end
-	} else {
-		flag = "true"
-		mode = "raw"
-	}
-	if i >= len(s.buffer) || s.buffer[i] != ']' {
-		return gadparser.PToken{}
-	}
-	i++
+	inner := group[1 : len(group)-1]
+
+	// Optional trailing `? condition` on the same line as the closing `]`.
 	condition := ""
-	if strings.HasPrefix(s.buffer[i:], " ?") {
-		condition = strings.TrimSpace(s.buffer[i+2:])
-		i = len(s.buffer)
+	rest := s.buffer[end:]
+	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+		rest = rest[:nl]
 	}
-	lit := s.buffer[:i]
-	s.consume(len(lit))
-	pt := s.newToken(giomtoken.Attribute, lit, name)
-	pt.Set("content", content)
-	pt.Set("mode", mode)
+	consumed := end
+	if strings.HasPrefix(rest, " ?") {
+		condition = strings.TrimSpace(rest[2:])
+		consumed = end + len(rest)
+	}
+
+	// Base position of inner (the byte right after the opening `[`).
+	innerPos := source.Pos(s.file.Base+s.offset-len(s.buffer)-1) + 1
+	lit := s.buffer[:consumed]
+	s.consume(consumed)
+	pt := s.newToken(giomtoken.Attribute, lit, "")
+	pt.Set("inner", inner)
+	pt.Set("innerPos", innerPos)
 	pt.Set("condition", condition)
-	pt.Set("flag", flag)
 	return pt
 }
 
-func (s *scanner) readAttributeEnd(start int) (int, bool) {
-	parenDepth, bracketDepth, braceDepth := 0, 0, 0
-	inString := byte(0)
-	escaped := false
-	for i := start; i < len(s.buffer); i++ {
-		c := s.buffer[i]
-		if inString != 0 {
-			if escaped {
-				escaped = false
-				continue
-			}
-			if c == '\\' {
-				escaped = true
-				continue
-			}
-			if c == inString {
-				inString = 0
-			}
-			continue
+// ensureBracketClosed appends subsequent physical lines to the buffer until the
+// bracket group starting at s.buffer[0] is balanced-closed, or input ends. The
+// separating newline is preserved so buffer offsets stay aligned with file
+// offsets (verbatim), keeping attribute value positions accurate.
+func (s *scanner) ensureBracketClosed() {
+	for {
+		if _, _, ok := s.readBalanced(0, '[', ']'); ok {
+			return
 		}
-		switch c {
-		case '\'', '"', '`':
-			inString = c
-		case '(':
-			parenDepth++
-		case ')':
-			if parenDepth > 0 {
-				parenDepth--
-			}
-		case '[':
-			bracketDepth++
-		case ']':
-			if bracketDepth == 0 && parenDepth == 0 && braceDepth == 0 {
-				return i, true
-			}
-			if bracketDepth > 0 {
-				bracketDepth--
-			}
-		case '{':
-			braceDepth++
-		case '}':
-			if braceDepth > 0 {
-				braceDepth--
-			}
+		buf, err := s.reader.ReadString('\n')
+		if len(buf) == 0 {
+			return
+		}
+		s.offset += len(buf)
+		if buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+		s.buffer += "\n" + buf
+		if err != nil {
+			return
 		}
 	}
-	return len(s.buffer), false
 }
 
 var rgxImportModule = regexp.MustCompile(`^@import\s+("[0-9a-zA-Z_\-\. \/][0-9a-zA-Z_\-\. \/]*")(\s+as\s+([a-zA-Z$_]\w*))?$`)

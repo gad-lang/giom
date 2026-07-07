@@ -182,13 +182,16 @@ ul
 
 ## Match
 
+Match a value against `@case` clauses; the default clause is written `@else`
+(or its alias `@default`).
+
 ```giom
 @match Status
     @case "draft"
         span.badge Draft
     @case "published"
         span.badge Published
-    @else
+    @default            // alias of @else
         span.badge Unknown
 ```
 

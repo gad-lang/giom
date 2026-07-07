@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	gnode "github.com/gad-lang/gad/parser/node"
 	"github.com/gad-lang/gad/parser/source"
 	giomnode "github.com/gad-lang/giom/node"
 )
@@ -104,6 +105,25 @@ func TestImportDestructureRest(t *testing.T) {
 	}
 }
 
+// globalNames extracts the declared identifier names of a `@global` statement
+// from its lowered Gad declaration (or the legacy Names slice).
+func globalNames(t *testing.T, gs *giomnode.GlobalStmt) []string {
+	t.Helper()
+	if gs.Decl == nil {
+		return gs.Names
+	}
+	var names []string
+	for _, sp := range gs.Decl.Specs {
+		switch s := sp.(type) {
+		case *gnode.ParamSpec:
+			names = append(names, s.Ident.Ident.Name)
+		case *gnode.NamedParamSpec:
+			names = append(names, s.Ident.Ident.Name)
+		}
+	}
+	return names
+}
+
 func TestGlobal(t *testing.T) {
 	file := parseLine(t, `@global Model User`)
 	if len(file.Stmts) != 1 {
@@ -113,8 +133,9 @@ func TestGlobal(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *giomnode.GlobalStmt, got %T", file.Stmts[0])
 	}
-	if len(gs.Names) != 2 || gs.Names[0] != "Model" || gs.Names[1] != "User" {
-		t.Fatalf("expected [Model User], got %v", gs.Names)
+	names := globalNames(t, gs)
+	if len(names) != 2 || names[0] != "Model" || names[1] != "User" {
+		t.Fatalf("expected [Model User], got %v", names)
 	}
 }
 
@@ -127,8 +148,18 @@ func TestGlobalSingle(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *giomnode.GlobalStmt, got %T", file.Stmts[0])
 	}
-	if len(gs.Names) != 1 || gs.Names[0] != "App" {
-		t.Fatalf("expected [App], got %v", gs.Names)
+	names := globalNames(t, gs)
+	if len(names) != 1 || names[0] != "App" {
+		t.Fatalf("expected [App], got %v", names)
+	}
+}
+
+func TestGlobalCommaAndDefaults(t *testing.T) {
+	file := parseLine(t, `@global a, b, c = 1`)
+	gs := file.Stmts[0].(*giomnode.GlobalStmt)
+	names := globalNames(t, gs)
+	if len(names) != 3 || names[0] != "a" || names[2] != "c" {
+		t.Fatalf("expected [a b c], got %v", names)
 	}
 }
 

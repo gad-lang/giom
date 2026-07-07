@@ -728,6 +728,9 @@ type GlobalStmt struct {
 	NodePos source.Pos
 	NodeEnd source.Pos
 	Names   []string
+	// Decl, when set, is a fully-formed Gad `global (…)` declaration (with
+	// optional `= v` / `!?= v` defaults). It takes precedence over Names.
+	Decl *gnode.GenDecl
 }
 
 func (s *GlobalStmt) Pos() source.Pos { return s.NodePos }

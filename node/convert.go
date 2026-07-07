@@ -424,6 +424,9 @@ func convertConst(s *ConstStmt) gnode.Stmts {
 }
 
 func convertGlobal(s *GlobalStmt) gnode.Stmts {
+	if s.Decl != nil {
+		return gnode.Stmts{gnode.SDecl(s.Decl)}
+	}
 	var specs []gnode.Spec
 	for _, name := range s.Names {
 		specs = append(specs, gnode.NewParamSpec(false,

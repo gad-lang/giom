@@ -270,11 +270,24 @@ Each form compiles to a Gad grouped declaration, e.g. `const (a=1, b=2)`.
 
 ## Globals
 
-Declare globals using `@global` followed by space-separated names.
+Declare globals with `@global`. Names may be space-separated (legacy) or
+comma-separated, may carry a default, and may be grouped in parentheses spanning
+multiple lines (indentation inside is ignored).
 
 ```giom
-@global Model User
+@global Model User            // space-separated
+@global t, Req, Context       // comma-separated
+@global page = 1, limit = 20  // `= v` default: applied when nil OR absent
+@global user !?= "guest"      // `!?= v` default: applied only when absent
+
+@global (
+    a
+    b, c = 2
+)
 ```
 
-Compiles to Gad `global (Model, User)`. Globals can also be provided through
-the Go symbol table — the CMS example passes one global named `Model`.
+Each form compiles to a Gad grouped declaration, e.g. `global (t, Req, Context)`.
+The `= v` / `!?= v` defaults lower onto Gad's [`global` defaults](../../gad/doc/variables-and-scopes.md#defaults):
+`= v` fills a nil-or-absent global, `!?= v` fills only an absent one. Globals can
+also be provided through the Go symbol table — the CMS example passes one global
+named `Model`.

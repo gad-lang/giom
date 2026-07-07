@@ -643,14 +643,8 @@ func (s *scanner) scanExport() gadparser.PToken {
 	return gadparser.PToken{}
 }
 
-var rgxGlobal = regexp.MustCompile(`^@global\s+(.+)$`)
-
 func (s *scanner) scanGlobal() gadparser.PToken {
-	if sm := rgxGlobal.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return s.newToken(giomtoken.Global, sm[0], sm[1])
-	}
-	return gadparser.PToken{}
+	return s.scanDeclDirective("@global", giomtoken.Global)
 }
 
 func (s *scanner) scanVar() gadparser.PToken {

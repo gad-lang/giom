@@ -740,25 +740,60 @@ func splitAttributeEntries(inner string) []attrSpan {
 	return spans
 }
 
+// parseGlobal parses `@global` in any form:
+//
+//	@global a                      // single
+//	@global a, b, c = 1            // comma-separated, with a default
+//	@global a, b, d !?= 2          // absent-only default
+//	@global x y z                  // legacy space-separated names
+//	@global (a                     // parenthesized, may span lines
+//	    b, c = 2)
+//
+// The declaration body is wrapped in a Gad grouped `global (…)` declaration so
+// every form (including `=` / `!?=` defaults) is handled by Gad natively. The
+// legacy space-separated form is normalized to commas first.
 func (p *Parser) parseGlobal() *giomnode.GlobalStmt {
 	tok := p.Token
 	p.expect(giomtoken.Global)
 
-	rest := strings.TrimSpace(stringData(tok, "value", ""))
-	var names []string
-	if rest != "" {
-		for _, name := range strings.Fields(rest) {
-			name = strings.TrimSpace(name)
-			if name != "" {
-				names = append(names, name)
+	s := &giomnode.GlobalStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+	}
+
+	inner := strings.TrimSpace(stringData(tok, "value", ""))
+	if inner == "" {
+		return s
+	}
+
+	// Legacy space-separated names (no comma, `=` or newline) → comma-separated.
+	content := inner
+	verbatim := true
+	if !strings.ContainsAny(inner, ",=\n") {
+		content = strings.Join(strings.Fields(inner), ", ")
+		verbatim = content == inner
+	}
+
+	base := noBase
+	if verbatim {
+		if v, ok := tok.GetOk("innerPos"); ok {
+			if pos, ok := v.(source.Pos); ok {
+				if b := pos - source.Pos(len("global (")); b >= 1 {
+					base = b
+				}
 			}
 		}
 	}
 
-	s := &giomnode.GlobalStmt{
-		NodePos: tok.Pos,
-		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
-		Names:   names,
+	stmt, err := parseGadFirstStmtAt("global ("+content+")", base, false)
+	if err != nil {
+		p.Error(tok.Pos, err.Error())
+		return s
+	}
+	if declStmt, ok := stmt.(*gnode.DeclStmt); ok {
+		if decl, ok := declStmt.Decl.(*gnode.GenDecl); ok && decl.Tok == token.Global {
+			s.Decl = decl
+		}
 	}
 	return s
 }

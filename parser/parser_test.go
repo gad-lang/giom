@@ -81,8 +81,8 @@ func TestImportDestructureRename(t *testing.T) {
 	file := parseLine(t, `@import { page_wrapper: pw, hero: h } from "comps.giom"`)
 	expectStmtCount(t, file, 1)
 	code := codeStmtStr(t, file, 0)
-	if !strings.Contains(code, "page_wrapper:pw") {
-		t.Fatalf("expected 'page_wrapper:pw', got: %s", code)
+	if !strings.Contains(code, "pw = giom_import_0.page_wrapper") || !strings.Contains(code, "h = giom_import_0.hero") {
+		t.Fatalf("expected renamed explicit imports, got: %s", code)
 	}
 }
 
@@ -90,8 +90,8 @@ func TestImportDestructureDefault(t *testing.T) {
 	file := parseLine(t, `@import { page_wrapper = default_wrapper } from "comps.giom"`)
 	expectStmtCount(t, file, 1)
 	code := codeStmtStr(t, file, 0)
-	if !strings.Contains(code, "page_wrapper=default_wrapper") {
-		t.Fatalf("expected 'page_wrapper=default_wrapper', got: %s", code)
+	if !strings.Contains(code, "page_wrapper = (giom_import_0.page_wrapper ?? default_wrapper)") {
+		t.Fatalf("expected explicit import with default, got: %s", code)
 	}
 }
 
@@ -99,8 +99,8 @@ func TestImportDestructureRest(t *testing.T) {
 	file := parseLine(t, `@import { page_wrapper, **rest } from "comps.giom"`)
 	expectStmtCount(t, file, 1)
 	code := codeStmtStr(t, file, 0)
-	if !strings.Contains(code, "**rest") {
-		t.Fatalf("expected '**rest', got: %s", code)
+	if !strings.Contains(code, "rest = giom_import_0") {
+		t.Fatalf("expected explicit rest import, got: %s", code)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestGlobalSingle(t *testing.T) {
 }
 
 func TestVar(t *testing.T) {
-	file := parseLine(t, `@var a, b = {}, x`)
+	file := parseLine(t, `@var (a, b = {}, x)`)
 	if len(file.Stmts) != 1 {
 		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
 	}
@@ -156,7 +156,7 @@ func TestVar(t *testing.T) {
 }
 
 func TestVarNoInit(t *testing.T) {
-	file := parseLine(t, `@var a, b, c`)
+	file := parseLine(t, `@var (a, b, c)`)
 	if len(file.Stmts) != 1 {
 		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
 	}
@@ -175,7 +175,7 @@ func TestVarNoInit(t *testing.T) {
 }
 
 func TestConst(t *testing.T) {
-	file := parseLine(t, `@const a, b = {}, x`)
+	file := parseLine(t, `@const (a = 1, b = {}, x = 2)`)
 	if len(file.Stmts) != 1 {
 		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
 	}
@@ -186,19 +186,19 @@ func TestConst(t *testing.T) {
 	if len(cs.Decls) != 3 {
 		t.Fatalf("expected 3 decls, got %d", len(cs.Decls))
 	}
-	if cs.Decls[0].Name != "a" || cs.Decls[0].Init != nil {
-		t.Fatalf("expected a with nil init, got name=%q init=%v", cs.Decls[0].Name, cs.Decls[0].Init)
+	if cs.Decls[0].Name != "a" || cs.Decls[0].Init == nil {
+		t.Fatalf("expected a with init, got name=%q init=%v", cs.Decls[0].Name, cs.Decls[0].Init)
 	}
 	if cs.Decls[1].Name != "b" || cs.Decls[1].Init == nil {
 		t.Fatalf("expected b with init, got name=%q init=%v", cs.Decls[1].Name, cs.Decls[1].Init)
 	}
-	if cs.Decls[2].Name != "x" || cs.Decls[2].Init != nil {
-		t.Fatalf("expected x with nil init, got name=%q init=%v", cs.Decls[2].Name, cs.Decls[2].Init)
+	if cs.Decls[2].Name != "x" || cs.Decls[2].Init == nil {
+		t.Fatalf("expected x with init, got name=%q init=%v", cs.Decls[2].Name, cs.Decls[2].Init)
 	}
 }
 
 func TestConstSingle(t *testing.T) {
-	file := parseLine(t, `@const count = 0`)
+	file := parseLine(t, `@const (count = 0)`)
 	if len(file.Stmts) != 1 {
 		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
 	}
@@ -212,7 +212,7 @@ func TestConstSingle(t *testing.T) {
 }
 
 func TestVarSingle(t *testing.T) {
-	file := parseLine(t, `@var count = 0`)
+	file := parseLine(t, `@var (count = 0)`)
 	if len(file.Stmts) != 1 {
 		t.Fatalf("expected 1 stmt, got %d", len(file.Stmts))
 	}
@@ -229,7 +229,7 @@ func TestImportDestructureMixed(t *testing.T) {
 	file := parseLine(t, `@import { a, b: bb, c = 5, **rest } from "comps.giom"`)
 	expectStmtCount(t, file, 1)
 	code := codeStmtStr(t, file, 0)
-	for _, part := range []string{"a", "b:bb", "c=5", "**rest"} {
+	for _, part := range []string{"a = giom_import_0.a", "bb = giom_import_0.b", "c = (giom_import_0.c ?? 5)", "rest = giom_import_0"} {
 		if !strings.Contains(code, part) {
 			t.Fatalf("expected part %q, got: %s", part, code)
 		}
@@ -243,8 +243,10 @@ func TestImportDestructureWithMain(t *testing.T) {
         p Hello`
 	file := parseLine(t, src)
 	expectStmtCount(t, file, 2)
-	expectCodeStmt(t, file, 0, "import")
-	expectCodeStmt(t, file, 0, "page_wrapper")
+	code := codeStmtStr(t, file, 0)
+	if !strings.Contains(code, "import") || !strings.Contains(code, "page_wrapper") {
+		t.Fatalf("expected import and page_wrapper, got %q", code)
+	}
 }
 
 func codeStmtStr(t *testing.T, file *giomnode.File, idx int) string {

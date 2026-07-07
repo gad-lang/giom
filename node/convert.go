@@ -172,18 +172,7 @@ func convertBody(stmts gnode.Stmts) gnode.Stmts {
 func convertFuncDecl(f *FuncDecl) gnode.Stmts {
 	params := addSlotsParam(f.Params)
 	fn := funcExpr(params, convertBody(f.Body), f.Pos(), f.End())
-	stmts := gnode.Stmts{
-		gnode.SDecl(&gnode.GenDecl{
-			Tok:    token.Const,
-			TokPos: f.Pos(),
-			Specs: []gnode.Spec{
-				&gnode.ValueSpec{
-					Idents: []*gnode.IdentExpr{gnode.EIdent(f.Name, f.Pos())},
-					Values: []gnode.Expr{fn},
-				},
-			},
-		}),
-	}
+	stmts := recursiveFuncStmts(f.Name, fn, f.Pos())
 	if f.Exported {
 		stmts = append(stmts, &gnode.ExportStmt{
 			TokenPos: f.Pos(),
@@ -215,23 +204,12 @@ func convertCompDecl(c *CompDecl) gnode.Stmts {
 	}
 	body = append(body, convertBody(c.Body)...)
 
-	if c.Name == "main" {
+	if c.Main {
 		return body
 	}
 	fn := funcExpr(addSlotsParam(c.Params), body, c.Pos(), c.End())
 
-	stmts := gnode.Stmts{
-		gnode.SDecl(&gnode.GenDecl{
-			Tok:    token.Const,
-			TokPos: c.Pos(),
-			Specs: []gnode.Spec{
-				&gnode.ValueSpec{
-					Idents: []*gnode.IdentExpr{gnode.EIdent(c.ID, c.Pos())},
-					Values: []gnode.Expr{fn},
-				},
-			},
-		}),
-	}
+	stmts := recursiveFuncStmts(c.ID, fn, c.Pos())
 	if c.Exported {
 		stmts = append(stmts, &gnode.ExportStmt{
 			TokenPos: c.Pos(),
@@ -239,6 +217,25 @@ func convertCompDecl(c *CompDecl) gnode.Stmts {
 		})
 	}
 	return stmts
+}
+
+func recursiveFuncStmts(name string, fn *gnode.FuncExpr, pos source.Pos) gnode.Stmts {
+	ident := gnode.EIdent(name, pos)
+	return gnode.Stmts{
+		gnode.SDecl(&gnode.GenDecl{
+			Tok:    token.Var,
+			TokPos: pos,
+			Specs: []gnode.Spec{
+				&gnode.ValueSpec{Idents: []*gnode.IdentExpr{ident}, Values: []gnode.Expr{gnode.LNil(pos)}},
+			},
+		}),
+		&gnode.AssignStmt{
+			LHS:      []gnode.Expr{gnode.EIdent(name, pos)},
+			RHS:      []gnode.Expr{fn},
+			Token:    token.Assign,
+			TokenPos: pos,
+		},
+	}
 }
 
 func convertCompCall(c *CompCallStmt) gnode.Stmts {
@@ -268,7 +265,10 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	//   $$slots["main"] = $slot0
 	//   page_wrapper(args; $slots=$$slots)
 	var stmts gnode.Stmts
+	slotPrefix := fmt.Sprintf("$slot%d", c.Pos())
+	slotsName := fmt.Sprintf("$$slots%d", c.Pos())
 	for i, sp := range c.SlotPass {
+		slotName := fmt.Sprintf("%s_%d", slotPrefix, i)
 		ft := sp.FuncType
 		if ft != nil && !ft.FuncPos.IsValid() {
 			ft.FuncPos = sp.Pos()
@@ -278,7 +278,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 			TokPos: sp.Pos(),
 			Specs: []gnode.Spec{
 				&gnode.ValueSpec{
-					Idents: []*gnode.IdentExpr{gnode.EIdent(fmt.Sprintf("$slot%d", i), sp.Pos())},
+					Idents: []*gnode.IdentExpr{gnode.EIdent(slotName, sp.Pos())},
 					Values: []gnode.Expr{
 						&gnode.FuncExpr{
 							Type: ft,
@@ -294,25 +294,26 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 		TokPos: c.Pos(),
 		Specs: []gnode.Spec{
 			&gnode.ValueSpec{
-				Idents: []*gnode.IdentExpr{gnode.EIdent("$$slots", c.Pos())},
+				Idents: []*gnode.IdentExpr{gnode.EIdent(slotsName, c.Pos())},
 				Values: []gnode.Expr{gnode.EDict(c.Pos(), c.End())},
 			},
 		},
 	}))
 	for i, sp := range c.SlotPass {
+		slotName := fmt.Sprintf("%s_%d", slotPrefix, i)
 		stmts = append(stmts, &gnode.AssignStmt{
 			LHS: []gnode.Expr{
 				&gnode.IndexExpr{
-					X:     gnode.EIdent("$$slots", 0),
+					X:     gnode.EIdent(slotsName, 0),
 					Index: gnode.Str(slotPassName(sp), 0),
 				},
 			},
-			RHS:      []gnode.Expr{gnode.EIdent(fmt.Sprintf("$slot%d", i), 0)},
+			RHS:      []gnode.Expr{gnode.EIdent(slotName, 0)},
 			Token:    token.Assign,
 			TokenPos: sp.Pos(),
 		})
 	}
-	call.NamedArgs.AppendS("$slots", gnode.EIdent("$$slots", 0))
+	call.NamedArgs.AppendS("$slots", gnode.EIdent(slotsName, 0))
 	stmts.Append(gnode.SExpr(call))
 	return stmts
 }
@@ -365,6 +366,9 @@ func convertExport(e *ExportStmt) gnode.Stmts {
 }
 
 func convertVar(s *VarStmt) gnode.Stmts {
+	if s.Decl != nil {
+		return gnode.Stmts{gnode.SDecl(s.Decl)}
+	}
 	var specs []gnode.Spec
 	for _, d := range s.Decls {
 		var vals []gnode.Expr
@@ -388,6 +392,9 @@ func convertVar(s *VarStmt) gnode.Stmts {
 }
 
 func convertConst(s *ConstStmt) gnode.Stmts {
+	if s.Decl != nil {
+		return gnode.Stmts{gnode.SDecl(s.Decl)}
+	}
 	var specs []gnode.Spec
 	for _, d := range s.Decls {
 		var vals []gnode.Expr
@@ -428,42 +435,26 @@ func convertGlobal(s *GlobalStmt) gnode.Stmts {
 
 func convertSlot(s *SlotDecl) gnode.Stmts {
 	var stmts gnode.Stmts
-	stmts.Append(gnode.SDecl(&gnode.GenDecl{
-		Tok:    token.Const,
-		TokPos: s.Pos(),
-		Specs: []gnode.Spec{
-			&gnode.ValueSpec{
-				Idents: []*gnode.IdentExpr{gnode.EIdent("$slot$"+s.ID+"$", s.Pos())},
-				Values: []gnode.Expr{
-					funcExpr(s.Scope, convertBody(s.Body), s.Pos(), s.End()),
-				},
-			},
-		},
-	}))
+	slotLookupName := "$slot$" + s.ID + "$value"
+	slotLookup := &gnode.IndexExpr{
+		X:     gnode.EIdent("$slots", 0),
+		Index: gnode.Str(s.ID, 0),
+	}
 	stmts.Append(gnode.SDecl(&gnode.GenDecl{
 		Tok:    token.Var,
 		TokPos: s.Pos(),
 		Specs: []gnode.Spec{
 			&gnode.ValueSpec{
-				Idents: []*gnode.IdentExpr{gnode.EIdent("$slot$"+s.ID, s.Pos())},
-				Values: []gnode.Expr{
-					&gnode.BinaryExpr{
-						LHS: &gnode.IndexExpr{
-							X:     gnode.EIdent("$slots", 0),
-							Index: gnode.Str(s.ID, 0),
-						},
-						RHS:      gnode.EIdent("$slot$"+s.ID+"$", 0),
-						Token:    token.Nullich,
-						TokenPos: s.Pos(),
-					},
-				},
+				Idents: []*gnode.IdentExpr{gnode.EIdent(slotLookupName, s.Pos())},
+				Values: []gnode.Expr{slotLookup},
 			},
 		},
 	}))
-	// Invoke the slot at this position in the body
-	stmts.Append(gnode.SExpr(&gnode.CallExpr{
-		Func: gnode.EIdent("$slot$"+s.ID, 0),
-	}))
+	stmts.Append(&gnode.IfStmt{
+		Cond: gnode.EBinary(gnode.Str(s.ID, 0), gnode.EIdent("$slots", 0), token.In, s.Pos()),
+		Body: gnode.SBlock(s.Pos(), s.End(), gnode.SExpr(&gnode.CallExpr{Func: gnode.EIdent(slotLookupName, 0)})),
+		Else: gnode.SBlock(s.Pos(), s.End(), convertBody(s.Body)...),
+	})
 	return stmts
 }
 
@@ -488,12 +479,56 @@ func convertSlotPass(s *SlotPassStmt) gnode.Stmts {
 }
 
 func convertFor(f *ForStmt) gnode.Stmts {
+	if arr, ok := f.Cond.(*gnode.ArrayExpr); ok && len(arr.Elements) == 2 {
+		key, keyOK := arr.Elements[0].(*gnode.IdentExpr)
+		bin, binOK := arr.Elements[1].(*gnode.BinaryExpr)
+		if keyOK && binOK && bin.Token == token.In {
+			if val, valOK := bin.LHS.(*gnode.IdentExpr); valOK {
+				return gnode.Stmts{
+					&gnode.ForInStmt{
+						ForPos:   f.Pos(),
+						Key:      key,
+						Value:    val,
+						Iterable: bin.RHS,
+						Body:     gnode.SBlock(f.Pos(), f.End(), convertBody(f.Body)...),
+					},
+				}
+			}
+		}
+	}
+	if mp, ok := f.Cond.(*gnode.MultiParenExpr); ok && len(mp.PositionalElements) == 2 {
+		key, keyOK := mp.PositionalElements[0].(*gnode.IdentExpr)
+		bin, binOK := mp.PositionalElements[1].(*gnode.BinaryExpr)
+		if keyOK && binOK && bin.Token == token.In {
+			val, valOK := bin.LHS.(*gnode.IdentExpr)
+			if !valOK {
+				return gnode.Stmts{
+					&gnode.ForStmt{
+						ForPos: f.Pos(),
+						Init:   f.Init,
+						Cond:   f.Cond,
+						Post:   f.Post,
+						Body:   gnode.SBlock(f.Pos(), f.End(), convertBody(f.Body)...),
+					},
+				}
+			}
+			return gnode.Stmts{
+				&gnode.ForInStmt{
+					ForPos:   f.Pos(),
+					Key:      key,
+					Value:    val,
+					Iterable: bin.RHS,
+					Body:     gnode.SBlock(f.Pos(), f.End(), convertBody(f.Body)...),
+				},
+			}
+		}
+	}
 	if bin, ok := f.Cond.(*gnode.BinaryExpr); ok && bin.Token == token.In {
 		if val, ok := bin.LHS.(*gnode.IdentExpr); ok {
 			return gnode.Stmts{
 				&gnode.ForInStmt{
 					ForPos:   f.Pos(),
-					Key:      &gnode.IdentExpr{Name: "_"},
+					Key:      &gnode.IdentExpr{Name: "_", Empty: true},
 					Value:    val,
 					Iterable: bin.RHS,
 					Body:     gnode.SBlock(f.Pos(), f.End(), convertBody(f.Body)...),

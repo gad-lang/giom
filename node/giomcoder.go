@@ -269,7 +269,7 @@ func (s *VarStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 			parts = append(parts, d.Name)
 		}
 	}
-	ctx.WriteLine("@var " + strings.Join(parts, ", "))
+	ctx.WriteLine("@var (" + strings.Join(parts, ", ") + ")")
 }
 
 func (s *ConstStmt) WriteGiom(ctx *GiomCodeWriteContext) {
@@ -281,7 +281,7 @@ func (s *ConstStmt) WriteGiom(ctx *GiomCodeWriteContext) {
 			parts = append(parts, d.Name)
 		}
 	}
-	ctx.WriteLine("@const " + strings.Join(parts, ", "))
+	ctx.WriteLine("@const (" + strings.Join(parts, ", ") + ")")
 }
 
 func (s *GlobalStmt) WriteGiom(ctx *GiomCodeWriteContext) {

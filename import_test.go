@@ -148,37 +148,37 @@ func TestCompileGlobalMultiple(t *testing.T) {
 }
 
 func TestCompileVar(t *testing.T) {
-	compileSrc(t, `@var a, b, c
+	compileSrc(t, `@var (a, b, c)
 @main
     h1 "Hello"`)
 }
 
 func TestCompileVarWithInit(t *testing.T) {
-	compileSrc(t, `@var a, b = {}, x
+	compileSrc(t, `@var (a, b = {}, x)
 @main
     h1 "Hello"`)
 }
 
 func TestCompileVarSingle(t *testing.T) {
-	compileSrc(t, `@var count = 0
+	compileSrc(t, `@var (count = 0)
 @main
     h1 {count}`)
 }
 
 func TestCompileConst(t *testing.T) {
-	compileSrc(t, `@const a, b, c
+	compileSrc(t, `@const (a = 1, b = 2, c = 3)
 @main
     h1 "Hello"`)
 }
 
 func TestCompileConstWithInit(t *testing.T) {
-	compileSrc(t, `@const a, b = {}, x
+	compileSrc(t, `@const (a = 1, b = {}, x = 2)
 @main
     h1 "Hello"`)
 }
 
 func TestCompileConstSingle(t *testing.T) {
-	compileSrc(t, `@const name = "test"
+	compileSrc(t, `@const (name = "test")
 @main
     h1 {name}`)
 }

@@ -466,6 +466,7 @@ type CompDecl struct {
 	Slots     []*SlotDecl
 	Comps     []*CompDecl
 	Exported  bool
+	Main      bool
 }
 
 func (c *CompDecl) Pos() source.Pos { return c.NodePos }
@@ -656,6 +657,7 @@ type VarStmt struct {
 	ast.NodeData
 	NodePos source.Pos
 	NodeEnd source.Pos
+	Decl    *gnode.GenDecl
 	Decls   []VarDecl
 }
 
@@ -665,6 +667,10 @@ func (s *VarStmt) StmtNode()       {}
 func (s *VarStmt) String() string  { return "giom.Var" }
 
 func (s *VarStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	if s.Decl != nil {
+		s.Decl.WriteCode(ctx)
+		return
+	}
 	ctx.WriteString("var (")
 	for i, d := range s.Decls {
 		if i > 0 {
@@ -686,6 +692,7 @@ type ConstStmt struct {
 	ast.NodeData
 	NodePos source.Pos
 	NodeEnd source.Pos
+	Decl    *gnode.GenDecl
 	Decls   []VarDecl
 }
 
@@ -695,6 +702,10 @@ func (s *ConstStmt) StmtNode()       {}
 func (s *ConstStmt) String() string  { return "giom.Const" }
 
 func (s *ConstStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	if s.Decl != nil {
+		s.Decl.WriteCode(ctx)
+		return
+	}
 	ctx.WriteString("const (")
 	for i, d := range s.Decls {
 		if i > 0 {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gad-lang/gad"
+	"github.com/gad-lang/gad/importers"
 )
 
 type templateCacheEntry struct {
@@ -56,6 +57,8 @@ type Render struct {
 	// BuiltinsFunc returns the Gad builtins to use for compilation.
 	// If nil, defaults to AppendBuiltins(gad.NewBuiltins()).
 	BuiltinsFunc func() *gad.Builtins
+
+	ModuleMapFunc func(mm *gad.ModuleMap) *gad.ModuleMap
 
 	mu             sync.Mutex
 	compileMu      sync.Mutex
@@ -201,15 +204,21 @@ func (r *Render) compile(filePath string, src []byte, globalNames []string) (*te
 	if workDir == "" {
 		workDir = filepath.Dir(filePath)
 	}
+
 	mm := gad.NewModuleMap().SetExtImporter(&FileImporter{
 		WorkDir:       workDir,
 		FileReader:    tr.Read,
 		TranspilePath: r.TranspilePath,
 	})
 
+	if r.ModuleMapFunc != nil {
+		mm = r.ModuleMapFunc(mm)
+	}
+
 	opts := gad.CompileOptions{CompilerOptions: gad.CompilerOptions{
 		ModuleFile:   filePath,
 		ModuleMap:    mm,
+		EmbededdMap:  gad.NewEmbedMap().SetExtImporter(&importers.EmbeddedFileImporter{WorkDirs: []string{workDir}}),
 		FallbackFunc: CompileFallback,
 	}}
 
@@ -217,9 +226,19 @@ func (r *Render) compile(filePath string, src []byte, globalNames []string) (*te
 	if _, err := st.DefineGlobals(globalNames); err != nil {
 		return nil, err
 	}
-	_, bc, err := Compile(st, src, opts)
+
+	var (
+		bc  *gad.Bytecode
+		err error
+	)
+
+	if filepath.Ext(filePath) != ".giom" {
+		_, bc, err = gad.Compile(st, src, opts)
+	} else {
+		_, bc, err = Compile(st, src, opts)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("compile %s: %w", filePath, err)
+		return nil, fmt.Errorf("compile %s: %+v", filePath, err)
 	}
 
 	files := make(map[string]time.Time)

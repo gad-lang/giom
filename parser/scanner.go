@@ -58,7 +58,25 @@ func newScanner(file *source.File, r io.Reader) *scanner {
 			End:   []rune("}"),
 		},
 	}
+	registerLines(file)
 	return s
+}
+
+// registerLines populates file.Lines with the offset of the first character of
+// each line. The giom scanner reads the source through its own bufio.Reader and
+// never advances gad's source.Reader, which is what normally calls File.AddLine.
+// Without this, File.Lines stays [0] and every token position resolves to line
+// 1 (column = byte offset), corrupting error traces and node positions. This
+// mirrors the newline scan in source.Data.check.
+func registerLines(file *source.File) {
+	if file == nil || file.Data == nil {
+		return
+	}
+	for i, c := range file.Data.Bytes() {
+		if c == '\n' {
+			file.AddLine(i + 1)
+		}
+	}
 }
 
 // =============================================================================
@@ -342,6 +360,9 @@ func (s *scanner) scanCode() gadparser.PToken {
 		s.consume(len(sm[0]))
 		pt := s.newToken(giomtoken.Code, sm[0], "")
 		pt.Set("values", []string{sm[1]})
+		// Absolute position of the code content (sm[1]) so parseCode can map
+		// the parsed statement back onto the original source line/column.
+		pt.Set("valuePos", []source.Pos{pt.Pos + source.Pos(len(sm[0])-len(sm[1]))})
 		return pt
 	}
 	return gadparser.PToken{}
@@ -352,9 +373,10 @@ var rgxMCode = regexp.MustCompile(`^\s*~~\s*$`)
 func (s *scanner) scanMCode() gadparser.PToken {
 	if sm := rgxMCode.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
-		code := s.NextRawCode("~~")
+		code, positions := s.NextRawCode("~~")
 		pt := s.newToken(giomtoken.Code, "", "")
 		pt.Set("values", code)
+		pt.Set("valuePos", positions)
 		return pt
 	}
 	return gadparser.PToken{}
@@ -400,34 +422,117 @@ func (s *scanner) scanClassName() gadparser.PToken {
 	return gadparser.PToken{}
 }
 
-var rgxAttribute = regexp.MustCompile(`^\[([\w\-:@\.]+)\s*(?:=\s*(\"([^\"\\]*)\"|([^\]]+)))?\](?:\s*\?\s*(.*)$)?`)
-
 func (s *scanner) scanAttribute() gadparser.PToken {
-	if sm := rgxAttribute.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-
-		if len(sm[3]) != 0 || sm[2] == "" {
-			var flag string
-			if sm[2] == "" {
-				flag = "true"
-			}
-			pt := s.newToken(giomtoken.Attribute, sm[0], sm[1])
-			pt.Set("content", sm[3])
-			pt.Set("mode", "raw")
-			pt.Set("condition", sm[5])
-			pt.Set("flag", flag)
-			return pt
+	if !strings.HasPrefix(s.buffer, "[") {
+		return gadparser.PToken{}
+	}
+	nameEnd := 1
+	for nameEnd < len(s.buffer) {
+		c := s.buffer[nameEnd]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == ':' || c == '@' || c == '.' {
+			nameEnd++
+			continue
 		}
+		break
+	}
+	if nameEnd == 1 {
+		return gadparser.PToken{}
+	}
+	name := s.buffer[1:nameEnd]
+	i := nameEnd
+	for i < len(s.buffer) && (s.buffer[i] == ' ' || s.buffer[i] == '\t') {
+		i++
+	}
+	var content, mode, flag string
+	if i < len(s.buffer) && s.buffer[i] == '=' {
+		i++
+		for i < len(s.buffer) && (s.buffer[i] == ' ' || s.buffer[i] == '\t') {
+			i++
+		}
+		valueStart := i
+		end, ok := s.readAttributeEnd(valueStart)
+		if !ok {
+			return gadparser.PToken{}
+		}
+		value := strings.TrimSpace(s.buffer[valueStart:end])
+		if strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) && len(value) >= 2 {
+			content = value[1 : len(value)-1]
+			mode = "raw"
+		} else if value != `""` {
+			content = value
+			mode = "expression"
+		}
+		i = end
+	} else {
+		flag = "true"
+		mode = "raw"
+	}
+	if i >= len(s.buffer) || s.buffer[i] != ']' {
+		return gadparser.PToken{}
+	}
+	i++
+	condition := ""
+	if strings.HasPrefix(s.buffer[i:], " ?") {
+		condition = strings.TrimSpace(s.buffer[i+2:])
+		i = len(s.buffer)
+	}
+	lit := s.buffer[:i]
+	s.consume(len(lit))
+	pt := s.newToken(giomtoken.Attribute, lit, name)
+	pt.Set("content", content)
+	pt.Set("mode", mode)
+	pt.Set("condition", condition)
+	pt.Set("flag", flag)
+	return pt
+}
 
-		if sm[2] != `""` {
-			pt := s.newToken(giomtoken.Attribute, sm[0], sm[1])
-			pt.Set("content", sm[4])
-			pt.Set("mode", "expression")
-			pt.Set("condition", sm[5])
-			return pt
+func (s *scanner) readAttributeEnd(start int) (int, bool) {
+	parenDepth, bracketDepth, braceDepth := 0, 0, 0
+	inString := byte(0)
+	escaped := false
+	for i := start; i < len(s.buffer); i++ {
+		c := s.buffer[i]
+		if inString != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == inString {
+				inString = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			inString = c
+		case '(':
+			parenDepth++
+		case ')':
+			if parenDepth > 0 {
+				parenDepth--
+			}
+		case '[':
+			bracketDepth++
+		case ']':
+			if bracketDepth == 0 && parenDepth == 0 && braceDepth == 0 {
+				return i, true
+			}
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		case '{':
+			braceDepth++
+		case '}':
+			if braceDepth > 0 {
+				braceDepth--
+			}
 		}
 	}
-	return gadparser.PToken{}
+	return len(s.buffer), false
 }
 
 var rgxImportModule = regexp.MustCompile(`^@import\s+("[0-9a-zA-Z_\-\. \/][0-9a-zA-Z_\-\. \/]*")(\s+as\s+([a-zA-Z$_]\w*))?$`)
@@ -584,24 +689,42 @@ func (s *scanner) scanGlobal() gadparser.PToken {
 	return gadparser.PToken{}
 }
 
-var rgxVar = regexp.MustCompile(`^@var\s+(.+)$`)
-
 func (s *scanner) scanVar() gadparser.PToken {
-	if sm := rgxVar.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return s.newToken(giomtoken.Var, sm[0], sm[1])
+	if tok := s.scanParenDirective("@var", giomtoken.Var); tok.Valid() {
+		return tok
 	}
 	return gadparser.PToken{}
 }
 
-var rgxConst = regexp.MustCompile(`^@const\s+(.+)$`)
-
 func (s *scanner) scanConst() gadparser.PToken {
-	if sm := rgxConst.FindStringSubmatch(s.buffer); len(sm) != 0 {
-		s.consume(len(sm[0]))
-		return s.newToken(giomtoken.Const, sm[0], sm[1])
+	if tok := s.scanParenDirective("@const", giomtoken.Const); tok.Valid() {
+		return tok
 	}
 	return gadparser.PToken{}
+}
+
+func (s *scanner) scanParenDirective(prefix string, token token.Token) gadparser.PToken {
+	line := s.buffer
+	if !strings.HasPrefix(line, prefix) {
+		return gadparser.PToken{}
+	}
+	if len(line) <= len(prefix) || line[len(prefix)] != ' ' {
+		return gadparser.PToken{}
+	}
+	start := len(prefix)
+	for start < len(line) && line[start] == ' ' {
+		start++
+	}
+	if start >= len(line) || line[start] != '(' {
+		return gadparser.PToken{}
+	}
+	balanced, end, ok := s.readBalanced(start, '(', ')')
+	if !ok || strings.TrimSpace(line[end:]) != "" {
+		return gadparser.PToken{}
+	}
+	lit := line[:end]
+	s.consume(end)
+	return s.newToken(token, lit, strings.TrimSpace(balanced[1:len(balanced)-1]))
 }
 
 var rgxFunc = regexp.MustCompile(`^@(export\s+)?func ([a-zA-Z_-]+\w*)(\((.*)\))?$`)
@@ -691,6 +814,7 @@ func (s *scanner) scanComp() gadparser.PToken {
 		pt := s.newToken(giomtoken.Comp, lit, "main")
 		pt.Set("args", args)
 		pt.Set("exported", "true")
+		pt.Set("main", "true")
 		return pt
 	}
 
@@ -825,6 +949,9 @@ func (s *scanner) scanText() gadparser.PToken {
 		}
 		pt := s.newToken(giomtoken.Text, sm[0], sm[2])
 		pt.Set("mode", mode)
+		// Absolute position of the text content (sm[2], a suffix of sm[0]) so
+		// embedded {= expr } interpolations map back to the original source.
+		pt.Set("valuePos", []source.Pos{pt.Pos + source.Pos(len(sm[0])-len(sm[2]))})
 		return pt
 	}
 	return gadparser.PToken{}
@@ -884,8 +1011,13 @@ func (s *scanner) NextRaw() gadparser.PToken {
 	}
 }
 
-func (s *scanner) NextRawCode(eof string) (lines []string) {
-	ind := s.Indentation()
+// NextRawCode collects the raw lines of a multi-line code block up to the eof
+// marker. Lines are returned verbatim (indentation preserved) alongside the
+// absolute base position of each line, so the parser can map the parsed
+// statements back onto the original source. Leading indentation is
+// insignificant to gad, so preserving it keeps positions faithful without
+// affecting compilation.
+func (s *scanner) NextRawCode(eof string) (lines []string, positions []source.Pos) {
 	for {
 		s.ensureBuffer()
 
@@ -893,28 +1025,17 @@ func (s *scanner) NextRawCode(eof string) (lines []string) {
 		case giomtoken.ScnEOF:
 			return
 		case giomtoken.ScnNewLine:
-			if s.buffer == ind {
-				lines = append(lines, "")
+			if strings.TrimSpace(s.buffer) == eof {
 				s.consume(len(s.buffer))
-			} else {
-				br := []rune(s.buffer)
-				indr := []rune(ind)
-				for len(indr) > 0 && len(br) > 0 {
-					if br[0] == indr[0] {
-						br = br[1:]
-						indr = indr[1:]
-					} else {
-						break
-					}
-				}
-				b := string(br)
-				if b == eof {
-					s.consume(len(s.buffer))
-					return
-				}
-				lines = append(lines, b)
-				s.consume(len(s.buffer))
+				return
 			}
+			line := s.buffer
+			if strings.TrimSpace(line) == "" {
+				line = ""
+			}
+			s.consume(len(s.buffer))
+			lines = append(lines, line)
+			positions = append(positions, s.lastTokenPos)
 		}
 	}
 }

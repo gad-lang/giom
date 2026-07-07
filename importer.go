@@ -75,10 +75,13 @@ func (m *FileImporter) Import(ctx context.Context, module *gad.ModuleSpec) (data
 
 	compile := func(ctx *gad.BuiltinCompileModuleContext) (bc *gad.Bytecode, err error) {
 		file := ctx.SetFileData(src)
+		if rel, err := filepath.Rel(m.WorkDir, module.Name); err == nil {
+			file.Name = rel
+		}
 		p := giomparser.NewParser(file)
 		parsed, err := p.ParseFile()
 		if err != nil {
-			return nil, err
+			return nil, ctx.Compiler.Errorf(ctx.Node, "parse file %q error: %w", file.Name, err)
 		}
 
 		if m.TranspilePath != nil {

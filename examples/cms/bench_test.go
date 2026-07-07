@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"time"
 	"testing"
+	"time"
 )
 
 func BenchmarkRoutes(b *testing.B) {

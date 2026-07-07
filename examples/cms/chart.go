@@ -9,10 +9,10 @@ import (
 )
 
 type benchResult struct {
-	Label    string
-	ColdUS   float64
-	WarmUS   float64
-	Speedup  float64
+	Label   string
+	ColdUS  float64
+	WarmUS  float64
+	Speedup float64
 }
 
 func generateChart(results []benchResult, outPath string) error {

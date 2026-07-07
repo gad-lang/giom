@@ -14,10 +14,12 @@ import (
 	giomtoken "github.com/gad-lang/giom/token"
 )
 
+type bailout struct{}
+
 // Parser parses giom template source into AST nodes.
 type Parser struct {
 	file      *source.File
-	Errors    []string
+	Errors    gadparser.ErrorList
 	scanner   *scanner
 	Token     gadparser.PToken
 	PrevToken gadparser.PToken
@@ -54,12 +56,21 @@ func (p *Parser) expect(kinds ...token.Token) {
 			return
 		}
 	}
-	p.error(fmt.Sprintf("expected %v, got %s (%s)", kinds, giomtoken.String(p.Token.Token), p.Token.Literal))
+	p.Error(p.Token.Pos, fmt.Sprintf("expected %v, got %s (%s)", kinds, giomtoken.String(p.Token.Token), p.Token.Literal))
 }
 
-func (p *Parser) error(msg string) {
-	p.Errors = append(p.Errors, msg)
-	panic(msg)
+func (p *Parser) Error(pos source.Pos, msg string) {
+	filePos := source.MustFilePosition(p.file, pos)
+	n := len(p.Errors)
+	if n > 0 && p.Errors[n-1].Pos.Line == filePos.Line {
+		// discard errors reported on the same line
+		return
+	}
+	if n > 10 {
+		// too many errors; terminate early
+		panic(bailout{})
+	}
+	p.Errors.Add(filePos, msg)
 }
 
 // currentComp returns the component at the top of the comp stack, or nil.
@@ -73,13 +84,14 @@ func (p *Parser) currentComp() *giomnode.CompDecl {
 // ParseFile parses the entire giom source file into a File AST node.
 func (p *Parser) ParseFile() (_ *giomnode.File, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			if msg, ok := r.(string); ok {
-				err = fmt.Errorf("parse error: %s", msg)
-			} else {
-				err = fmt.Errorf("parse error: %v", r)
+		if e := recover(); e != nil {
+			if _, ok := e.(bailout); !ok {
+				panic(e)
 			}
 		}
+
+		p.Errors.Sort()
+		err = p.Errors.Err()
 	}()
 
 	file := &giomnode.File{
@@ -88,6 +100,11 @@ func (p *Parser) ParseFile() (_ *giomnode.File, err error) {
 
 	for p.Token.Token != giomtoken.EOF && p.Token.Token != token.Illegal {
 		stmt := p.parseStmt()
+
+		if p.Errors.Len() > 0 {
+			return nil, p.Errors.Err()
+		}
+
 		if stmt != nil {
 			file.Stmts = append(file.Stmts, stmt)
 		}
@@ -117,7 +134,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 	case giomtoken.If:
 		return p.parseIf()
 	case giomtoken.ElseIf, giomtoken.Else:
-		p.error(fmt.Sprintf("unexpected %s without matching @if", giomtoken.String(p.Token.Token)))
+		p.Error(p.Token.Pos, fmt.Sprintf("unexpected %s without matching @if", giomtoken.String(p.Token.Token)))
+		p.Next()
 		return nil
 	case giomtoken.For:
 		return p.parseFor()
@@ -148,7 +166,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 	case giomtoken.Match:
 		return p.parseMatch()
 	case giomtoken.Case:
-		p.error(fmt.Sprintf("unexpected %s without matching @match", giomtoken.String(p.Token.Token)))
+		p.Error(p.Token.Pos, fmt.Sprintf("unexpected %s without matching @match", giomtoken.String(p.Token.Token)))
+		p.Next()
 		return nil
 	case giomtoken.Export:
 		return p.parseExport()
@@ -158,7 +177,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 	case giomtoken.Outdent, giomtoken.EOF:
 		return nil
 	default:
-		p.error(fmt.Sprintf("unexpected token: %s (%s)", giomtoken.String(p.Token.Token), p.Token.Literal))
+		p.Error(p.Token.Pos, fmt.Sprintf("unexpected token: %s (%s)", giomtoken.String(p.Token.Token), p.Token.Literal))
+		p.Next()
 		return nil
 	}
 }
@@ -233,7 +253,11 @@ func (p *Parser) parseText() *giomnode.TextStmt {
 	}
 
 	if content != "" {
-		stmts, err := parseTextGad(content)
+		base := noBase
+		if positions, ok := tokenValuePos(tok); ok && len(positions) > 0 {
+			base = positions[0]
+		}
+		stmts, err := parseTextGadAt(content, base)
 		if err == nil {
 			t.Stmts = stmts
 		}
@@ -408,34 +432,61 @@ func (p *Parser) parseCode() *giomnode.CodeStmt {
 	if values, ok := tok.GetOk("values"); ok {
 		switch v := values.(type) {
 		case []string:
-			// Multi-line code (~~) — join lines and parse as full GAD source
+			positions, _ := tokenValuePos(tok)
+			// Multi-line code (~~) — join lines and parse as full GAD source.
+			// Lines are verbatim (indentation preserved) and joined with the
+			// original newlines, so parsing at the first line's base position
+			// keeps every statement mapped to its real source line/column.
 			if tok.Literal == "" {
 				joined := strings.Join(v, "\n")
 				if trimmed := strings.TrimSpace(joined); trimmed != "" {
-					stmts, err := parseGad(trimmed, p.scanner.SourceFile(), false)
-					if err == nil {
-						s.Stmts = stmts
+					base := noBase
+					if len(positions) > 0 {
+						base = positions[0]
 					}
+					stmts, err := parseGadAt(joined, base, false)
+					if err != nil {
+						p.Error(tok.Pos, err.Error())
+						return s
+					}
+					s.Stmts = stmts
 				}
-				if s.Stmts != nil && len(s.Stmts) > 0 {
+				if len(s.Stmts) > 0 {
 					s.NodeEnd = s.Stmts[len(s.Stmts)-1].End()
 				}
 				return s
 			}
-			// Single-line code (~) — parse each value as individual statement
-			for _, line := range v {
-				line = strings.TrimSpace(line)
-				if line != "" {
-					stmt, err := parseGadFirstStmt(line, nil, false)
-					if err == nil {
-						s.Stmts = append(s.Stmts, stmt)
-					}
+			// Single-line code (~) — parse each value as an individual statement
+			// at the base position of its content, offset by any leading
+			// whitespace TrimSpace removes.
+			for i, line := range v {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" {
+					continue
+				}
+				base := noBase
+				if i < len(positions) {
+					lead := source.Pos(len(line) - len(strings.TrimLeft(line, " \t")))
+					base = positions[i] + lead
+				}
+				stmt, err := parseGadFirstStmtAt(trimmed, base, false)
+				if err == nil {
+					s.Stmts = append(s.Stmts, stmt)
 				}
 			}
 		}
 	}
 
 	return s
+}
+
+// tokenValuePos returns the per-value base positions recorded by the scanner
+// for a code token, if present.
+func tokenValuePos(tok gadparser.PToken) (positions []source.Pos, ok bool) {
+	if v, has := tok.GetOk("valuePos"); has {
+		positions, ok = v.([]source.Pos)
+	}
+	return
 }
 
 func (p *Parser) parseImportModule() *giomnode.CodeStmt {
@@ -449,24 +500,63 @@ func (p *Parser) parseImportModule() *giomnode.CodeStmt {
 	var gadSrc string
 	switch {
 	case destructure != "":
-		gadSrc = fmt.Sprintf("{%s} := import(%s)", destructure, path)
+		gadSrc = expandImportDestructure(destructure, path, tok.Pos)
 	case ident != "":
-		gadSrc = fmt.Sprintf("const %s = import(%s)", ident, path)
+		gadSrc = fmt.Sprintf("var %s = import(%s)", ident, path)
 	default:
 		gadSrc = fmt.Sprintf("import(%s)", path)
 	}
 
-	stmt, err := parseGadFirstStmt(gadSrc, nil, false)
+	stmts, err := parseGad(gadSrc, nil, false)
 	s := &giomnode.CodeStmt{
 		NodePos: tok.Pos,
 		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
 	}
 
-	if err == nil && stmt != nil {
-		s.Stmts = gnode.Stmts{stmt}
+	if err == nil && stmts != nil {
+		s.Stmts = stmts
 	}
 
 	return s
+}
+
+func expandImportDestructure(destructure, path string, pos source.Pos) string {
+	tmp := fmt.Sprintf("giom_import_%d", pos)
+	parts := []string{fmt.Sprintf("var %s = import(%s)", tmp, path)}
+	for _, field := range strings.Split(destructure, ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		if strings.HasPrefix(field, "**") {
+			alias := strings.TrimSpace(strings.TrimPrefix(field, "**"))
+			if alias != "" {
+				parts = append(parts, fmt.Sprintf("var %s = %s", alias, tmp))
+			}
+			continue
+		}
+		name := field
+		alias := field
+		fallback := ""
+		if before, after, ok := strings.Cut(field, "="); ok {
+			name = strings.TrimSpace(before)
+			alias = name
+			fallback = strings.TrimSpace(after)
+		}
+		if before, after, ok := strings.Cut(field, ":"); ok {
+			name = strings.TrimSpace(before)
+			alias = strings.TrimSpace(after)
+		}
+		if name == "" || alias == "" {
+			continue
+		}
+		value := fmt.Sprintf("%s.%s", tmp, name)
+		if fallback != "" {
+			value = fmt.Sprintf("%s ?? %s", value, fallback)
+		}
+		parts = append(parts, fmt.Sprintf("var %s = %s", alias, value))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // =============================================================================
@@ -543,34 +633,12 @@ func (p *Parser) parseVar() *giomnode.VarStmt {
 	tok := p.Token
 	p.expect(giomtoken.Var)
 
-	rest := strings.TrimSpace(stringData(tok, "value", ""))
-	var decls []giomnode.VarDecl
-
-	if rest != "" {
-		parts := splitTopLevelArgs(rest)
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			if idx := topLevelAssignIndex(part); idx >= 0 {
-				name := strings.TrimSpace(part[:idx])
-				initStr := strings.TrimSpace(part[idx+1:])
-				decls = append(decls, giomnode.VarDecl{
-					Name: name,
-					Init: parseExprStr(initStr, tok.Pos),
-				})
-			} else {
-				decls = append(decls, giomnode.VarDecl{
-					Name: part,
-				})
-			}
-		}
-	}
+	decl, decls := p.parseGadDeclDirective(tok, token.Var)
 
 	s := &giomnode.VarStmt{
 		NodePos: tok.Pos,
 		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Decl:    decl,
 		Decls:   decls,
 	}
 	return s
@@ -580,37 +648,66 @@ func (p *Parser) parseConst() *giomnode.ConstStmt {
 	tok := p.Token
 	p.expect(giomtoken.Const)
 
-	rest := strings.TrimSpace(stringData(tok, "value", ""))
-	var decls []giomnode.VarDecl
-
-	if rest != "" {
-		parts := splitTopLevelArgs(rest)
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			if idx := topLevelAssignIndex(part); idx >= 0 {
-				name := strings.TrimSpace(part[:idx])
-				initStr := strings.TrimSpace(part[idx+1:])
-				decls = append(decls, giomnode.VarDecl{
-					Name: name,
-					Init: parseExprStr(initStr, tok.Pos),
-				})
-			} else {
-				decls = append(decls, giomnode.VarDecl{
-					Name: part,
-				})
-			}
-		}
-	}
+	decl, decls := p.parseGadDeclDirective(tok, token.Const)
 
 	s := &giomnode.ConstStmt{
 		NodePos: tok.Pos,
 		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Decl:    decl,
 		Decls:   decls,
 	}
 	return s
+}
+
+func (p *Parser) parseGadDeclDirective(tok gadparser.PToken, want token.Token) (*gnode.GenDecl, []giomnode.VarDecl) {
+	src := tok.Literal
+	if strings.HasPrefix(src, "@") {
+		src = " " + src[1:]
+	}
+	if tok.Pos > 1 {
+		src = strings.Repeat(" ", int(tok.Pos)-1) + src
+	}
+	stmt := mustParseGadFirstStmt(src, p.file, false)
+	declStmt, ok := stmt.(*gnode.DeclStmt)
+	if !ok {
+		p.Error(tok.Pos, fmt.Sprintf("expected %s declaration", want.String()))
+	}
+	decl, ok := declStmt.Decl.(*gnode.GenDecl)
+	if !ok || decl.Tok != want {
+		p.Error(tok.Pos, fmt.Sprintf("expected %s declaration", want.String()))
+	}
+	normalizeValueSpecValues(decl)
+	return decl, varDeclsFromGenDecl(decl)
+}
+
+func normalizeValueSpecValues(decl *gnode.GenDecl) {
+	for _, spec := range decl.Specs {
+		valueSpec, ok := spec.(*gnode.ValueSpec)
+		if !ok || len(valueSpec.Values) >= len(valueSpec.Idents) {
+			continue
+		}
+		values := make([]gnode.Expr, len(valueSpec.Idents))
+		copy(values, valueSpec.Values)
+		valueSpec.Values = values
+	}
+}
+
+func varDeclsFromGenDecl(decl *gnode.GenDecl) []giomnode.VarDecl {
+	var decls []giomnode.VarDecl
+	for _, spec := range decl.Specs {
+		valueSpec, ok := spec.(*gnode.ValueSpec)
+		if !ok {
+			continue
+		}
+		for i, ident := range valueSpec.Idents {
+			var init gnode.Expr
+			if i < len(valueSpec.Values) {
+				init = valueSpec.Values[i]
+			}
+			decls = append(decls, giomnode.VarDecl{Name: ident.Name, Init: init})
+		}
+	}
+	return decls
 }
 
 func (p *Parser) parseFunc() *giomnode.FuncDecl {
@@ -649,6 +746,7 @@ func (p *Parser) parseComp() *giomnode.CompDecl {
 	name := stringData(tok, "value", tok.Literal)
 	argsStr := stringData(tok, "args", "")
 	exported := stringData(tok, "exported", "") == "true"
+	main := stringData(tok, "main", "") == "true"
 	params := p.parseCompParams(argsStr, tok.Pos)
 
 	comp := &giomnode.CompDecl{
@@ -658,6 +756,7 @@ func (p *Parser) parseComp() *giomnode.CompDecl {
 		Params:    params,
 		ParamsRaw: strings.TrimSpace(argsStr),
 		Exported:  exported,
+		Main:      main,
 	}
 
 	p.compStack = append(p.compStack, comp)
@@ -894,20 +993,34 @@ func stringData(pt gadparser.PToken, key, def string) string {
 	return def
 }
 
+// exprReturnPrefix wraps expression fragments so gad parses them as an
+// expression (handling {} dict literals etc.). Its length shifts the fragment
+// base so parsed positions still map onto the original source.
+const exprReturnPrefix = "return "
+
 func parseExprStr(s string, pos source.Pos) gnode.Expr {
-	s = strings.TrimSpace(s)
-	if s == "" {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
 		return gnode.EIdent("", pos)
 	}
-	// Wrap in "return" to force expression parsing (handles {} dict literal etc.)
-	stmt, err := parseGadFirstStmt("return "+s, nil, false)
+	// Map the fragment back onto the original source: pos marks where s begins,
+	// lead skips whitespace TrimSpace removed, and the "return " prefix is
+	// compensated so the expression itself lands at pos+lead.
+	base := noBase
+	if pos != source.NoPos {
+		lead := source.Pos(len(s) - len(strings.TrimLeft(s, " \t\r\n")))
+		if b := pos + lead - source.Pos(len(exprReturnPrefix)); b >= 1 {
+			base = b
+		}
+	}
+	stmt, err := parseGadFirstStmtAt(exprReturnPrefix+trimmed, base, false)
 	if err != nil {
-		return gnode.EIdent(s, pos)
+		return gnode.EIdent(trimmed, pos)
 	}
 	if rs, ok := stmt.(*gnode.ReturnStmt); ok && rs.Result != nil {
 		return rs.Result
 	}
-	return gnode.EIdent(s, pos)
+	return gnode.EIdent(trimmed, pos)
 }
 
 func compCallFuncExpr(name string, pos source.Pos) gnode.Expr {

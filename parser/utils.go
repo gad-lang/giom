@@ -8,9 +8,28 @@ import (
 	"github.com/gad-lang/gad/parser/source"
 )
 
+// noBase marks a fragment whose absolute position in the original giom source
+// is unknown, so gad assigns fragment-local positions instead.
+const noBase source.Pos = source.NoPos
+
 // parseGad parses a GAD expression string using gad's parser.
 // If textMode is true, uses mixed mode with {...} delimiters.
-func parseGad(s string, file *source.File, textMode bool) (_ node.Stmts, err error) {
+func parseGad(s string, file *source.File, textMode bool) (node.Stmts, error) {
+	return parseGadAt(s, noBase, textMode)
+}
+
+// parseGadAt parses a GAD fragment that is a verbatim slice of the original giom
+// source beginning at absolute position base (a source.Pos in the enclosing
+// FileSet). Setting the fragment file's base to that offset makes gad assign
+// every node a position of base+localOffset, i.e. in the original file's
+// coordinate space, so error traces and node positions resolve to the correct
+// .giom line and column. Because a fragment's byte layout matches the original
+// (verbatim), a constant text prefix such as "return " only shifts base
+// uniformly and is handled by the caller.
+//
+// When base is noBase (position unknown) the fragment is parsed with an
+// automatic base, preserving the previous fragment-local behavior.
+func parseGadAt(s string, base source.Pos, textMode bool) (_ node.Stmts, err error) {
 	po := &gadparser.ParserOptions{
 		Mode: gadparser.ParseConfigDisabled,
 	}
@@ -23,7 +42,14 @@ func parseGad(s string, file *source.File, textMode bool) (_ node.Stmts, err err
 	}
 
 	fileSet := source.NewFileSet()
-	srcFile := fileSet.AddFileData("(main)", -1, []byte(s))
+	fbase := -1
+	// The fragment base must be >= the file set base (1). Imported giom files
+	// live at large offsets, so this holds in practice; guard the standalone
+	// case where an early fragment could map below the set base.
+	if base != noBase && int(base) >= fileSet.Base {
+		fbase = int(base)
+	}
+	srcFile := fileSet.AddFileData("(main)", fbase, []byte(s))
 	p := gadparser.NewParserWithOptions(srcFile, po, so)
 
 	var f *gadparser.File
@@ -33,9 +59,13 @@ func parseGad(s string, file *source.File, textMode bool) (_ node.Stmts, err err
 	return f.Stmts, err
 }
 
-func parseGadFirstStmt(s string, file *source.File, mixed bool) (_ node.Stmt, err error) {
+func parseGadFirstStmt(s string, file *source.File, mixed bool) (node.Stmt, error) {
+	return parseGadFirstStmtAt(s, noBase, mixed)
+}
+
+func parseGadFirstStmtAt(s string, base source.Pos, mixed bool) (_ node.Stmt, err error) {
 	var stmts node.Stmts
-	if stmts, err = parseGad(s, file, mixed); err != nil {
+	if stmts, err = parseGadAt(s, base, mixed); err != nil {
 		return
 	}
 	return stmts[0], nil
@@ -50,7 +80,20 @@ func mustParseGadFirstStmt(s string, file *source.File, mixed bool) (stmt node.S
 }
 
 func parseTextGad(s string) (node.Stmts, error) {
-	return parseGad(strings.TrimSpace(s), nil, true)
+	return parseTextGadAt(s, noBase)
+}
+
+// parseTextGadAt parses mixed text/expression content (with {...} interpolation
+// delimiters) beginning at absolute position base, so embedded expressions map
+// back onto the original source. Leading whitespace trimmed from s shifts base
+// accordingly.
+func parseTextGadAt(s string, base source.Pos) (node.Stmts, error) {
+	trimmed := strings.TrimSpace(s)
+	if base != noBase {
+		lead := source.Pos(len(s) - len(strings.TrimLeft(s, " \t\r\n")))
+		base += lead
+	}
+	return parseGadAt(trimmed, base, true)
 }
 
 func parseCallArgsString(s string) (args *node.CallArgs, err error) {

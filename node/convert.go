@@ -270,9 +270,15 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	for i, sp := range c.SlotPass {
 		slotName := fmt.Sprintf("%s_%d", slotPrefix, i)
 		ft := sp.FuncType
-		if ft != nil && !ft.FuncPos.IsValid() {
+		if ft == nil {
+			ft = &gnode.FuncType{}
+		}
+		if !ft.FuncPos.IsValid() {
 			ft.FuncPos = sp.Pos()
 		}
+		// Accept the `$super` the enclosing component passes when invoking the
+		// slot, so overriding content can render the default via `super`.
+		withSuperParam(&ft.FuncHeader.Params)
 		stmts.Append(gnode.SDecl(&gnode.GenDecl{
 			Tok:    token.Const,
 			TokPos: sp.Pos(),
@@ -433,28 +439,103 @@ func convertGlobal(s *GlobalStmt) gnode.Stmts {
 	}
 }
 
-func convertSlot(s *SlotDecl) gnode.Stmts {
-	var stmts gnode.Stmts
-	slotLookupName := "$slot$" + s.ID + "$value"
-	slotLookup := &gnode.IndexExpr{
-		X:     gnode.EIdent("$slots", 0),
-		Index: gnode.Str(s.ID, 0),
+func slotVarName(id string) string     { return "$slot$" + id }
+func slotDefaultName(id string) string { return "$slot$" + id + "$" }
+
+// slotScopeArgs forwards a slot's scope parameters as call arguments, passing
+// each by its own name so slot content receives the surrounding component's
+// values (Vue-style scoped slots).
+func slotScopeArgs(scope *gnode.FuncParams) (pos gnode.CallExprPositionalArgs, named gnode.CallExprNamedArgs) {
+	if scope == nil {
+		return
 	}
+	for _, a := range scope.Args.Values {
+		if a != nil && a.Ident != nil {
+			pos.Values = append(pos.Values, gnode.EIdent(a.Ident.Name, 0))
+		}
+	}
+	for _, n := range scope.NamedArgs.Names {
+		if n != nil && n.Ident != nil {
+			named.AppendS(n.Ident.Name, gnode.EIdent(n.Ident.Name, 0))
+		}
+	}
+	return
+}
+
+// slotDefaultParams returns the parameters for a slot's default function: its
+// scope parameters plus a `$super` named parameter defaulting to nil.
+func slotDefaultParams(scope *gnode.FuncParams) *gnode.FuncParams {
+	out := &gnode.FuncParams{}
+	if scope != nil {
+		out.Args = scope.Args
+		out.NamedArgs.Var = scope.NamedArgs.Var
+		out.NamedArgs.Names = append([]*gnode.TypedIdentExpr{}, scope.NamedArgs.Names...)
+		out.NamedArgs.Values = append([]gnode.Expr{}, scope.NamedArgs.Values...)
+	}
+	return withSuperParam(out)
+}
+
+// withSuperParam appends a `$super` named parameter (default nil) unless present.
+func withSuperParam(params *gnode.FuncParams) *gnode.FuncParams {
+	if params == nil {
+		params = &gnode.FuncParams{}
+	}
+	for _, n := range params.NamedArgs.Names {
+		if n != nil && n.Ident != nil && n.Ident.Name == "$super" {
+			return params
+		}
+	}
+	params.NamedArgs.Names = append(params.NamedArgs.Names, &gnode.TypedIdentExpr{Ident: gnode.EIdent("$super", 0)})
+	params.NamedArgs.Values = append(params.NamedArgs.Values, gnode.LNil(0))
+	return params
+}
+
+// convertSlot compiles an `@slot` declaration. A slot with default content
+// compiles to a default function, `var $slot$ID = ($slots.ID ?? $slot$ID$)` and
+// a call passing `$super` (so an overriding slot can render the default via
+// `super`). A slot with no default content compiles to a nullish call
+// `$slots.ID?.(scope…)` so it renders only when provided.
+func convertSlot(s *SlotDecl) gnode.Stmts {
+	slotsSel := gnode.ESelector(gnode.EIdent("$slots", s.Pos()), gnode.Str(s.ID, s.Pos()))
+	posArgs, namedArgs := slotScopeArgs(s.Scope)
+
+	if len(s.Body) == 0 {
+		call := &gnode.NullishCallExpr{Func: slotsSel}
+		call.Args = posArgs
+		call.NamedArgs = namedArgs
+		return gnode.Stmts{gnode.SExpr(call)}
+	}
+
+	defName := slotDefaultName(s.ID)
+	varName := slotVarName(s.ID)
+
+	defFunc := &gnode.FuncExpr{
+		Type: funcType(slotDefaultParams(s.Scope)),
+		Body: gnode.SBlock(s.Pos(), s.End(), convertBody(s.Body)...),
+	}
+
+	var stmts gnode.Stmts
+	stmts.Append(gnode.SDecl(&gnode.GenDecl{
+		Tok:    token.Const,
+		TokPos: s.Pos(),
+		Specs: []gnode.Spec{&gnode.ValueSpec{
+			Idents: []*gnode.IdentExpr{gnode.EIdent(defName, s.Pos())},
+			Values: []gnode.Expr{defFunc},
+		}},
+	}))
 	stmts.Append(gnode.SDecl(&gnode.GenDecl{
 		Tok:    token.Var,
 		TokPos: s.Pos(),
-		Specs: []gnode.Spec{
-			&gnode.ValueSpec{
-				Idents: []*gnode.IdentExpr{gnode.EIdent(slotLookupName, s.Pos())},
-				Values: []gnode.Expr{slotLookup},
-			},
-		},
+		Specs: []gnode.Spec{&gnode.ValueSpec{
+			Idents: []*gnode.IdentExpr{gnode.EIdent(varName, s.Pos())},
+			Values: []gnode.Expr{gnode.EBinary(slotsSel, gnode.EIdent(defName, s.Pos()), token.Nullich, s.Pos())},
+		}},
 	}))
-	stmts.Append(&gnode.IfStmt{
-		Cond: gnode.EBinary(gnode.Str(s.ID, 0), gnode.EIdent("$slots", 0), token.In, s.Pos()),
-		Body: gnode.SBlock(s.Pos(), s.End(), gnode.SExpr(&gnode.CallExpr{Func: gnode.EIdent(slotLookupName, 0)})),
-		Else: gnode.SBlock(s.Pos(), s.End(), convertBody(s.Body)...),
-	})
+	call := &gnode.CallExpr{Func: gnode.EIdent(varName, s.Pos())}
+	call.Args = posArgs
+	call.NamedArgs = namedArgs
+	call.NamedArgs.AppendS("$super", gnode.EIdent(defName, s.Pos()))
+	stmts.Append(gnode.SExpr(call))
 	return stmts
 }
 

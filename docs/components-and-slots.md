@@ -82,6 +82,40 @@ Caller:
 
 If the caller does not pass content, the default slot body is rendered.
 
+## Optional Slots
+
+A slot with no default body is optional: it renders only when the caller
+provides content, and nothing otherwise (it compiles to a nullish call
+`$slots.name?.()`).
+
+```giom
+@export comp panel
+    section.panel
+        @slot header      // optional — omitted when not provided
+        @slot main
+            p Body
+```
+
+## Rendering The Default With `super`
+
+When a caller overrides a slot, its content can render the component's default
+by calling `super`. The default is passed to the slot as the `$super` named
+argument; bind it to a local `super` to call it.
+
+```giom
+@export comp button(label)
+    button.btn
+        @slot main
+            span {= label}
+
+@main
+    +button("Save")
+        @slot #main(;$super=nil)
+            ~ const super = $super
+            em ★
+            +super()          // renders the default <span>Save</span>
+```
+
 ## Slot Parameters
 
 ```giom

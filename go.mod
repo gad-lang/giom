@@ -1,6 +1,6 @@
 module github.com/gad-lang/giom
 
-go 1.25.0
+go 1.26.4
 
 require github.com/gad-lang/gad v0.0.2-0.20260706001951-ac25992c0e0c
 

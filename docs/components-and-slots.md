@@ -169,6 +169,46 @@ parameter. To render the component's default for that item, forward the scope to
 A runnable version of scoped slots and `super` forwarding is in
 `samples/slot_params.giom`.
 
+## Passing Slots Programmatically
+
+`@slot #name` and `+super` are sugar. A component compiles to a gad function that
+takes a `$slots` dict, so you can build that dict yourself in a `~~ … ~~` code
+block and call the component directly — useful when the set of slots is dynamic.
+
+Each `$slots` entry is a slot function whose **first parameter is `super`** (the
+component's default for that slot), followed by the slot's scope parameters.
+Unlike `+super`, a raw `super(…)` call is not rewritten, so it must pass super's
+own super (an empty function) as its first argument.
+
+```giom
+@export comp list(items;$slots={})
+    ul
+        @for i, it in items
+            li
+                @slot row(i, it)
+                    {=i}: {=it}
+
+@main
+    //- render every row bold, ignoring the default
+    ~~
+    list(["a", "b"]; $slots={
+        row: func(super, i, it) { giom$write("<b>" + it + "</b>") },
+    })
+    ~~
+
+    //- prefix each row, then render the default via super (scope forwarded)
+    ~~
+    list(["a", "b"]; $slots={
+        row: func(super, i, it) {
+            giom$write("* ")
+            super(func(*_){}, i, it)   // +super(i, it) sugars to this
+        },
+    })
+    ~~
+```
+
+See `samples/slots_programmatic.giom` for a runnable version.
+
 ## Card Component
 
 ```giom

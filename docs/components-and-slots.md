@@ -137,6 +137,9 @@ forward them when rendering the default via `super`, e.g. `+super(item)`.
 
 ## Slot Parameters
 
+A slot may declare parameters (a *scoped slot*): the component supplies the
+values when it renders the slot, and the override receives them.
+
 ```giom
 @export comp list(items)
     ul
@@ -150,6 +153,21 @@ forward them when rendering the default via `super`, e.g. `+super(item)`.
         @slot #item(post)
             a[href=post.URL] {= post.Title}
 ```
+
+An override of a scoped slot still receives `super` as its auto-injected first
+parameter. To render the component's default for that item, forward the scope to
+`super`:
+
+```giom
+@main
+    +list(Posts)
+        @slot #item(super, post)
+            span.star ★
+            +super(post)      // renders the component's default for this item
+```
+
+A runnable version of scoped slots and `super` forwarding is in
+`samples/slot_params.giom`.
 
 ## Card Component
 

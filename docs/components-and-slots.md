@@ -209,6 +209,54 @@ own super (an empty function) as its first argument.
 
 See `samples/slots_programmatic.giom` for a runnable version.
 
+## Dynamic Slot Names
+
+A slot name may be written in parentheses as a Gad template string, so a `{expr}`
+interpolation is evaluated at render time and used as the `$slots[…]` key. This
+works for both the declaration and the pass (override):
+
+```giom
+@slot (item[{i}])        // declaration — one slot per value of i
+@slot #(item[{index}])   // pass — override the slot named item[<index>]
+```
+
+Source positions inside `{ … }` are preserved, so a runtime error in an
+interpolated name reports the correct line.
+
+A component can therefore give each item its own overridable slot:
+
+```giom
+@comp list(items)
+    @for i, it in items
+        @slot (item[{i}])(it)
+            li {= it }
+
+@main
+    +list(Posts)
+        @slot #(item[{1}])(super, it)   // override just the second row
+            li.featured {= it }
+            +super(it)                  // then render its default
+```
+
+### Call-block code and slot names
+
+The `~` / `~~ … ~~` code statements written directly in a component-call block
+are **hoisted to the call scope, before the slot-pass declarations**. An
+interpolated slot name (and any slot body) can therefore reference the values
+they declare:
+
+```giom
++list(Posts)
+    ~ const index = 3
+    @slot #(item[{index}])(super, it)
+        li.featured {= it }
+    ~ var mark = "★"
+    @slot #(item[{4}])(super, it)
+        li {= mark }{= it }
+```
+
+A runnable version is in `samples/slot_dynamic_name.giom`.
+
 ## Card Component
 
 ```giom

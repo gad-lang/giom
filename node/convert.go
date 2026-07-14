@@ -265,8 +265,20 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 		call.Args.Values = append([]gnode.Expr{emptySuperFunc(c.Pos(), c.End())}, call.Args.Values...)
 	}
 
-	if len(c.SlotPass) == 0 {
+	if len(c.SlotPass) == 0 && len(c.InitStmts) == 0 {
 		return gnode.Stmts{gnode.SExpr(call)}
+	}
+
+	// Call-scope init code (`~` / `~~ … ~~`) comes first, so interpolated slot
+	// names and slot bodies can reference the values it declares.
+	var stmts gnode.Stmts
+	for _, st := range c.InitStmts {
+		stmts = append(stmts, convertStmt(st)...)
+	}
+
+	if len(c.SlotPass) == 0 {
+		stmts.Append(gnode.SExpr(call))
+		return stmts
 	}
 
 	// With slot passes, wrap in a block:
@@ -274,7 +286,6 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	//   var $$slots = {}
 	//   $$slots["main"] = $slot0
 	//   page_wrapper(args; $slots=$$slots)
-	var stmts gnode.Stmts
 	slotPrefix := fmt.Sprintf("$slot%d", c.Pos())
 	slotsName := fmt.Sprintf("$$slots%d", c.Pos())
 	for i, sp := range c.SlotPass {
@@ -322,7 +333,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 			LHS: []gnode.Expr{
 				&gnode.IndexExpr{
 					X:     gnode.EIdent(slotsName, 0),
-					Index: gnode.Str(slotPassName(sp), 0),
+					Index: slotPassIndex(sp),
 				},
 			},
 			RHS:      []gnode.Expr{gnode.EIdent(slotName, 0)},
@@ -333,6 +344,15 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	call.NamedArgs.AppendS("$slots", gnode.EIdent(slotsName, 0))
 	stmts.Append(gnode.SExpr(call))
 	return stmts
+}
+
+// slotPassIndex is the `$$slots[…]` key for a slot pass: the interpolated name
+// expression when present, otherwise the static name as a string literal.
+func slotPassIndex(sp *SlotPassStmt) gnode.Expr {
+	if sp.NameExpr != nil {
+		return sp.NameExpr
+	}
+	return gnode.Str(slotPassName(sp), 0)
 }
 
 func slotPassName(sp *SlotPassStmt) string {
@@ -532,7 +552,13 @@ func emptySuperFunc(pos, end source.Pos) *gnode.FuncExpr {
 // compiles to a nullish call `$slots.ID?.(superEmpty, scope…)` (so it renders
 // only when provided), passing an empty-body function as `super`.
 func convertSlot(s *SlotDecl) gnode.Stmts {
-	slotsSel := gnode.ESelector(gnode.EIdent("$slots", s.Pos()), gnode.Str(s.ID, s.Pos()))
+	var slotsSel gnode.Expr
+	if s.NameExpr != nil {
+		// Interpolated name: `$slots[<nameExpr>]`.
+		slotsSel = &gnode.IndexExpr{X: gnode.EIdent("$slots", s.Pos()), Index: s.NameExpr}
+	} else {
+		slotsSel = gnode.ESelector(gnode.EIdent("$slots", s.Pos()), gnode.Str(s.ID, s.Pos()))
+	}
 	posArgs, namedArgs := slotScopeArgs(s.Scope)
 
 	if len(s.Body) == 0 {

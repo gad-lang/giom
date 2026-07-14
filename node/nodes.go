@@ -508,7 +508,11 @@ type CompCallStmt struct {
 	Func     gnode.Expr
 	Args     gnode.CallArgs
 	SlotPass []*SlotPassStmt
-	InitCode *CodeStmt
+	// InitStmts are call-scope `~` / `~~ … ~~` code statements from the call
+	// block. They are emitted before the slot-pass declarations so a slot's
+	// interpolated name (e.g. `@slot #(line[{index}])`) and slot bodies can
+	// reference values they declare.
+	InitStmts gnode.Stmts
 }
 
 func (c *CompCallStmt) Pos() source.Pos { return c.NodePos }
@@ -531,10 +535,14 @@ func (c *CompCallStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 
 type SlotDecl struct {
 	ast.NodeData
-	NodePos  source.Pos
-	NodeEnd  source.Pos
-	Name     string
-	ID       string
+	NodePos source.Pos
+	NodeEnd source.Pos
+	Name    string
+	ID      string
+	// NameExpr, when set, is the interpolated slot name from `@slot (…)`. The
+	// `$slots` lookup then uses `$slots[NameExpr]` and ID is a synthetic id for
+	// the generated local variables.
+	NameExpr gnode.Expr
 	Scope    *gnode.FuncParams
 	ScopeRaw string
 	Body     gnode.Stmts
@@ -570,6 +578,9 @@ type SlotPassStmt struct {
 	NodeEnd  source.Pos
 	FuncType *gnode.FuncType
 	Name     gnode.Expr
+	// NameExpr, when set, is the interpolated slot name from `@slot #(…)`. It is
+	// used as the `$$slots[NameExpr]` index in place of a static string.
+	NameExpr gnode.Expr
 	Body     gnode.Stmts
 }
 

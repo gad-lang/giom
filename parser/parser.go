@@ -1006,6 +1006,34 @@ func (p *Parser) parseComp() *giomnode.CompDecl {
 	return comp
 }
 
+// posData reads a source.Pos stored on a scanner token (e.g. "namePos"),
+// returning noBase when absent.
+func posData(tok gadparser.PToken, key string) source.Pos {
+	if v, ok := tok.GetOk(key); ok {
+		if p, ok := v.(source.Pos); ok {
+			return p
+		}
+	}
+	return noBase
+}
+
+// parseSlotNameExpr parses an interpolated slot name (the content of `@slot (…)`
+// / `@slot #(…)`) as a Gad template string `#"…"`, so `{expr}` interpolations
+// are evaluated at render time. namePos is the absolute position of the content;
+// it is offset by the synthetic `#"` prefix so the parsed expression preserves
+// the original source positions.
+func parseSlotNameExpr(content string, namePos source.Pos) gnode.Expr {
+	delim := `"`
+	if strings.Contains(content, `"`) {
+		delim = "`"
+	}
+	pos := namePos
+	if pos != noBase {
+		pos -= 2 // account for the synthetic `#"` (or "#`") prefix
+	}
+	return parseExprStr("#"+delim+content+delim, pos)
+}
+
 func (p *Parser) parseSlot() *giomnode.SlotDecl {
 	tok := p.Token
 	p.expect(giomtoken.Slot)
@@ -1020,6 +1048,13 @@ func (p *Parser) parseSlot() *giomnode.SlotDecl {
 		ID:       strings.ReplaceAll(name, "-", "__"),
 		Scope:    scope,
 		ScopeRaw: strings.TrimSpace(argsStr),
+	}
+
+	if _, ok := tok.GetOk("nameExpr"); ok {
+		s.NameExpr = parseSlotNameExpr(name, posData(tok, "namePos"))
+		// The interpolated name is not a valid identifier; use a synthetic id
+		// (unique per source position) for the generated local variables.
+		s.ID = fmt.Sprintf("d%d", tok.Pos)
 	}
 
 	if comp := p.currentComp(); comp != nil {
@@ -1048,12 +1083,22 @@ func (p *Parser) parseSlotPass() *giomnode.SlotPassStmt {
 	tok := p.Token
 	p.expect(giomtoken.SlotPass)
 
-	header := strings.TrimSpace(stringData(tok, "header", stringData(tok, "value", "")))
-	name := header
-	argsStr := ""
-	if i := strings.Index(header, "("); i >= 0 && strings.HasSuffix(header, ")") {
-		name = strings.TrimSpace(header[:i])
-		argsStr = strings.TrimSpace(header[i+1 : len(header)-1])
+	var (
+		name     string
+		argsStr  string
+		nameExpr gnode.Expr
+	)
+	if _, ok := tok.GetOk("nameExpr"); ok {
+		name = stringData(tok, "name", "")
+		argsStr = stringData(tok, "args", "")
+		nameExpr = parseSlotNameExpr(name, posData(tok, "namePos"))
+	} else {
+		header := strings.TrimSpace(stringData(tok, "header", stringData(tok, "value", "")))
+		name = header
+		if i := strings.Index(header, "("); i >= 0 && strings.HasSuffix(header, ")") {
+			name = strings.TrimSpace(header[:i])
+			argsStr = strings.TrimSpace(header[i+1 : len(header)-1])
+		}
 	}
 
 	params, err := parseFuncParamsString(argsStr)
@@ -1062,8 +1107,9 @@ func (p *Parser) parseSlotPass() *giomnode.SlotPassStmt {
 	}
 
 	s := &giomnode.SlotPassStmt{
-		NodePos: tok.Pos,
-		Name:    gnode.EIdent(name, tok.Pos),
+		NodePos:  tok.Pos,
+		Name:     gnode.EIdent(name, tok.Pos),
+		NameExpr: nameExpr,
 		FuncType: &gnode.FuncType{
 			FuncHeader: gnode.FuncHeader{Params: *params},
 		},
@@ -1123,6 +1169,10 @@ func (p *Parser) parseCompCall() *giomnode.CompCallStmt {
 			case *giomnode.SlotPassStmt:
 				call.SlotPass = append(call.SlotPass, t)
 				lastMainSlot = nil
+			case *giomnode.CodeStmt:
+				// Call-scope code: hoisted before the slot-pass declarations so
+				// interpolated slot names and slot bodies can reference it.
+				call.InitStmts = append(call.InitStmts, t)
 			default:
 				if t != nil {
 					if lastMainSlot != nil {
@@ -1138,13 +1188,6 @@ func (p *Parser) parseCompCall() *giomnode.CompCallStmt {
 						}
 						call.SlotPass = append(call.SlotPass, lastMainSlot)
 					}
-				}
-			}
-		}
-		if withCode, _ := tok.GetOk("withCode"); withCode == "true" {
-			if len(block) > 0 {
-				if cs, ok := block[0].(*giomnode.CodeStmt); ok {
-					call.InitCode = cs
 				}
 			}
 		}

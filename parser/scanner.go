@@ -573,28 +573,51 @@ func (s *scanner) scanSlot() gadparser.PToken {
 		return gadparser.PToken{}
 	}
 	line := s.buffer
+	base0 := source.Pos(s.file.Base + s.offset - len(s.buffer) - 1)
 	i := len("@slot ")
-	j := i
-	for j < len(line) {
-		c := line[j]
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
-			j++
-			continue
-		}
-		break
-	}
-	if j == i {
-		return gadparser.PToken{}
-	}
-	name := line[i:j]
-	rest := strings.TrimSpace(line[j:])
-	args := ""
-	consumed := j
-	if rest != "" {
-		if j >= len(line) || line[j] != '(' {
+
+	var (
+		name      string
+		nameExpr  bool
+		namePos   source.Pos
+		afterName int
+	)
+	if i < len(line) && line[i] == '(' {
+		// Parenthesized, interpolated name: `@slot (line[{index}])`. The content
+		// is a Gad template string; store it verbatim with its absolute position.
+		balanced, end, ok := s.readBalanced(i, '(', ')')
+		if !ok {
 			return gadparser.PToken{}
 		}
-		balanced, end, ok := s.readBalanced(j, '(', ')')
+		name = balanced[1 : len(balanced)-1]
+		nameExpr = true
+		namePos = base0 + source.Pos(i+1)
+		afterName = end
+	} else {
+		j := i
+		for j < len(line) {
+			c := line[j]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+				j++
+				continue
+			}
+			break
+		}
+		if j == i {
+			return gadparser.PToken{}
+		}
+		name = line[i:j]
+		afterName = j
+	}
+
+	rest := strings.TrimSpace(line[afterName:])
+	args := ""
+	consumed := afterName
+	if rest != "" {
+		if afterName >= len(line) || line[afterName] != '(' {
+			return gadparser.PToken{}
+		}
+		balanced, end, ok := s.readBalanced(afterName, '(', ')')
 		if !ok {
 			return gadparser.PToken{}
 		}
@@ -608,12 +631,50 @@ func (s *scanner) scanSlot() gadparser.PToken {
 	s.consume(consumed)
 	pt := s.newToken(giomtoken.Slot, lit, name)
 	pt.Set("args", args)
+	if nameExpr {
+		pt.Set("nameExpr", true)
+		pt.Set("namePos", namePos)
+	}
 	return pt
 }
 
 var rgxSlotPass = regexp.MustCompile(`^@slot\s+#(.+)$`)
 
 func (s *scanner) scanSlotPass() gadparser.PToken {
+	const prefix = "@slot #"
+	if strings.HasPrefix(s.buffer, prefix) && len(s.buffer) > len(prefix) && s.buffer[len(prefix)] == '(' {
+		// Parenthesized, interpolated name: `@slot #(line[{index}])(args)`. The
+		// content is a Gad template string; store it verbatim with its absolute
+		// position, followed by an optional `(args)` group.
+		line := s.buffer
+		base0 := source.Pos(s.file.Base + s.offset - len(s.buffer) - 1)
+		i := len(prefix)
+		balanced, end, ok := s.readBalanced(i, '(', ')')
+		if !ok {
+			return gadparser.PToken{}
+		}
+		name := balanced[1 : len(balanced)-1]
+		namePos := base0 + source.Pos(i+1)
+
+		args := ""
+		if rest := strings.TrimSpace(line[end:]); rest != "" {
+			if line[end] != '(' {
+				return gadparser.PToken{}
+			}
+			b2, end2, ok := s.readBalanced(end, '(', ')')
+			if !ok || strings.TrimSpace(line[end2:]) != "" {
+				return gadparser.PToken{}
+			}
+			args = b2[1 : len(b2)-1]
+		}
+		s.consume(len(line))
+		pt := s.newToken(giomtoken.SlotPass, line, name)
+		pt.Set("name", name)
+		pt.Set("args", args)
+		pt.Set("nameExpr", true)
+		pt.Set("namePos", namePos)
+		return pt
+	}
 	if sm := rgxSlotPass.FindStringSubmatch(s.buffer); len(sm) != 0 {
 		s.consume(len(sm[0]))
 		pt := s.newToken(giomtoken.SlotPass, sm[0], sm[1])

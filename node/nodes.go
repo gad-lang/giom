@@ -742,6 +742,30 @@ func (s *GlobalStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 	ctx.WriteString("global (" + strings.Join(s.Names, ", ") + ")")
 }
 
+// EnumStmt — @enum declaration (compiles to Gad `enum IDENT { ... }` statement)
+// =============================================================================
+
+type EnumStmt struct {
+	ast.NodeData
+	NodePos source.Pos
+	NodeEnd source.Pos
+	Name    string
+	// Decl is the fully-formed Gad enum statement (`enum Name { … }`), parsed
+	// from the directive body.
+	Decl *gnode.EnumStmt
+}
+
+func (s *EnumStmt) Pos() source.Pos { return s.NodePos }
+func (s *EnumStmt) End() source.Pos { return s.NodeEnd }
+func (s *EnumStmt) StmtNode()       {}
+func (s *EnumStmt) String() string  { return fmt.Sprintf("giom.Enum(%s)", s.Name) }
+
+func (s *EnumStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	if s.Decl != nil {
+		s.Decl.WriteCode(ctx)
+	}
+}
+
 // ExportStmt — export declaration
 // =============================================================================
 

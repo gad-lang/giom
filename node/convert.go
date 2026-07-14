@@ -106,6 +106,8 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertConst(st)
 	case *GlobalStmt:
 		return convertGlobal(st)
+	case *EnumStmt:
+		return convertEnum(st)
 	case *ExportStmt:
 		return convertExport(st)
 	case *SlotDecl:
@@ -430,6 +432,15 @@ func convertConst(s *ConstStmt) gnode.Stmts {
 			Specs:  specs,
 		}),
 	}
+}
+
+// convertEnum lowers an `@enum` directive to its Gad `enum IDENT { … }`
+// statement (already parsed by the giom parser).
+func convertEnum(s *EnumStmt) gnode.Stmts {
+	if s.Decl == nil {
+		return nil
+	}
+	return gnode.Stmts{s.Decl}
 }
 
 func convertGlobal(s *GlobalStmt) gnode.Stmts {

@@ -151,6 +151,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 		return p.parseVar()
 	case giomtoken.Const:
 		return p.parseConst()
+	case giomtoken.Enum:
+		return p.parseEnum()
 	case giomtoken.Func:
 		return p.parseFunc()
 	case giomtoken.Comp:
@@ -824,6 +826,47 @@ func (p *Parser) parseConst() *giomnode.ConstStmt {
 		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
 		Decl:    decl,
 		Decls:   decls,
+	}
+	return s
+}
+
+// parseEnum parses `@enum IDENT ( … )`. The parenthesized body holds the enum
+// fields (same syntax as a `@var` declaration, plus the Gad enum extras `bit`
+// and `+`/`-`). It is rewritten into a Gad `enum IDENT { … }` statement and
+// parsed by Gad, so every field form is handled natively. The body is parsed at
+// its original source position so field positions are preserved.
+func (p *Parser) parseEnum() *giomnode.EnumStmt {
+	tok := p.Token
+	p.expect(giomtoken.Enum)
+
+	name := stringData(tok, "name", "")
+	s := &giomnode.EnumStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Name:    name,
+	}
+
+	inner := stringData(tok, "value", "")
+	prefix := "enum " + name + " { "
+
+	base := noBase
+	if v, ok := tok.GetOk("innerPos"); ok {
+		if pos, ok := v.(source.Pos); ok {
+			if b := pos - source.Pos(len(prefix)); b >= 1 {
+				base = b
+			}
+		}
+	}
+
+	stmt, err := parseGadFirstStmtAt(prefix+inner+" }", base, false)
+	if err != nil {
+		p.Error(tok.Pos, err.Error())
+		return s
+	}
+	if enumStmt, ok := stmt.(*gnode.EnumStmt); ok {
+		s.Decl = enumStmt
+	} else {
+		p.Error(tok.Pos, "expected enum declaration")
 	}
 	return s
 }

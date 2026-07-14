@@ -35,6 +35,7 @@ const (
 	Global
 	Var
 	Const
+	Enum
 	tokMax
 )
 
@@ -69,6 +70,7 @@ var tokNames = [...]string{
 	Global:       "GLOBAL",
 	Var:          "VAR",
 	Const:        "CONST",
+	Enum:         "ENUM",
 }
 
 // String returns a human-readable name for a giom token.

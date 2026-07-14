@@ -40,7 +40,7 @@ func printLinesExpect(t *testing.T, name, tpl, want string) {
 func TestSlotParams_PrintLines(t *testing.T) {
 	// A component definition alone (no @main) renders nothing.
 	printLinesExpect(t, "comp only",
-		compPrintLines+"\n~ const Levels = (;primary, secondary)\n",
+		compPrintLines+"\n@enum Levels (primary, secondary)\n",
 		"")
 
 	// A plain @main renders independently of the component.

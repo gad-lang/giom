@@ -270,6 +270,32 @@ constant must have an initializer** (a value-less `@const x` is a compile error)
 
 Each form compiles to a Gad grouped declaration, e.g. `const (a=1, b=2)`.
 
+## Enums
+
+Declare an enum with `@enum IDENT ( … )`. The parenthesized body holds the
+fields; its syntax mirrors a `@var` declaration — fields are separated by commas
+or newlines, each an optional value (`Name` or `Name = value`) — and it also
+accepts Gad's enum extras `bit` (power-of-two values) and a leading `+`/`-`
+sign. Defaulted fields auto-increment from the previous one.
+
+```giom
+@enum Perm (Read, Write, Exec = 10, Delete)   // 1, 2, 10, 11
+
+@enum Color (
+    Red
+    Green
+    Blue
+)
+
+@enum Flags (bit List, Detail, Create, Read = List | Detail)   // 1, 2, 4, 3
+@enum Signed (-Low, Lower, +High, Higher)                      // -1, -2, 3, 4
+```
+
+Each form compiles to a Gad `enum IDENT { … }` statement, so a member exposes
+`.value`, `.name`, `.index` and its owning enum, the enum is indexable by member
+name (`Perm["Write"]`) and iterable in declaration order. See the Gad
+[enum documentation](../../gad/doc/enums.md) for the value-computation rules.
+
 ## Globals
 
 Declare globals with `@global`. Names may be space-separated (legacy) or

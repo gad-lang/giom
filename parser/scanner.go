@@ -125,6 +125,9 @@ func (s *scanner) Scan() (t gadparser.PToken) {
 		if tok := s.scanConst(); tok.Valid() {
 			return tok
 		}
+		if tok := s.scanEnum(); tok.Valid() {
+			return tok
+		}
 		if tok := s.scanFunc(); tok.Valid() {
 			return tok
 		}
@@ -649,6 +652,41 @@ func (s *scanner) scanGlobal() gadparser.PToken {
 
 func (s *scanner) scanVar() gadparser.PToken {
 	return s.scanDeclDirective("@var", giomtoken.Var)
+}
+
+var rgxEnumHead = regexp.MustCompile(`^@enum\s+([a-zA-Z_]\w*)\s*\(`)
+
+// scanEnum scans `@enum IDENT ( … )`. The parenthesized body holds the enum
+// fields, whose syntax mirrors a `@var` declaration (comma- or newline-separated
+// `Name` / `Name = value`, and the Gad enum extras `bit`, `+`/`-`). The body may
+// span multiple lines up to the balanced `)`. The field text is stored verbatim
+// as the token value (with its absolute base position) alongside the enum name;
+// the parser rewrites it into a Gad `enum IDENT { … }` statement.
+func (s *scanner) scanEnum() gadparser.PToken {
+	m := rgxEnumHead.FindStringSubmatch(s.buffer)
+	if m == nil {
+		return gadparser.PToken{}
+	}
+	name := m[1]
+	start := len(m[0]) - 1 // index of the opening '('
+
+	base0 := source.Pos(s.file.Base + s.offset - len(s.buffer) - 1)
+
+	s.ensureBalanced(start, '(', ')')
+	balanced, end, ok := s.readBalanced(start, '(', ')')
+	if !ok || strings.TrimSpace(s.buffer[end:]) != "" {
+		return gadparser.PToken{}
+	}
+	inner := balanced[1 : len(balanced)-1]
+	innerStart := start + 1
+	lead := len(inner) - len(strings.TrimLeft(inner, " \t\r\n"))
+
+	lit := s.buffer[:end]
+	s.consume(end)
+	pt := s.newToken(giomtoken.Enum, lit, strings.TrimSpace(inner))
+	pt.Set("name", name)
+	pt.Set("innerPos", base0+source.Pos(innerStart+lead))
+	return pt
 }
 
 func (s *scanner) scanConst() gadparser.PToken {

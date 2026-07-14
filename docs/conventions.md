@@ -88,8 +88,7 @@ Do not call exported symbols from another file as unqualified local names.
 ## Slot `super`
 
 **`super` is auto-injected as the first parameter of an overriding `@slot`.** Do
-not declare or bind it — no `@slot #name(;$super=nil)` and no
-`~ const super = $super`. Render the slot's default by calling `super`.
+not declare it and do not bind it to a local — just call `super`.
 
 ```giom
 // good — super is available automatically
@@ -97,13 +96,6 @@ not declare or bind it — no `@slot #name(;$super=nil)` and no
     @slot #header
         em ★
         +super
-
-// bad — manual super plumbing
-+card("Fancy")
-    @slot #header(;$super=nil)
-        ~ const super = $super
-        em ★
-        +super()
 ```
 
 - A slot **with** default content passes that default as `super`; an

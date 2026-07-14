@@ -22,13 +22,13 @@ func TestSlotRendering(t *testing.T) {
 	}{
 		{
 			name: "default content",
-			src:  box + "@main\n    +box()\n",
+			src:  box + "@main\n    +box\n",
 			want: `<div><span>default</span></div>`,
 		},
 		{
 			name: "override",
 			src: box + "@main\n" +
-				"    +box()\n" +
+				"    +box\n" +
 				"        @slot #main\n" +
 				"            b over\n",
 			want: `<div><b>over</b></div>`,
@@ -38,7 +38,7 @@ func TestSlotRendering(t *testing.T) {
 			src: "@export comp box(;$slots={})\n" +
 				"    div\n" +
 				"        @slot extra\n" +
-				"@main\n    +box()\n",
+				"@main\n    +box\n",
 			want: `<div></div>`,
 		},
 		{
@@ -47,7 +47,7 @@ func TestSlotRendering(t *testing.T) {
 				"    div\n" +
 				"        @slot extra\n" +
 				"@main\n" +
-				"    +box()\n" +
+				"    +box\n" +
 				"        @slot #extra\n" +
 				"            i hi\n",
 			want: `<div><i>hi</i></div>`,
@@ -55,12 +55,33 @@ func TestSlotRendering(t *testing.T) {
 		{
 			name: "super renders default from override",
 			src: box + "@main\n" +
-				"    +box()\n" +
-				"        @slot #main(;$super=nil)\n" +
-				"            ~ const super = $super\n" +
+				"    +box\n" +
+				"        @slot #main\n" +
 				"            b before\n" +
-				"            +super()\n",
+				"            +super\n",
 			want: `<div><b>before</b><span>default</span></div>`,
+		},
+		{
+			name: "super with explicit first param not double-injected",
+			src: box + "@main\n" +
+				"    +box\n" +
+				"        @slot #main(super)\n" +
+				"            b before\n" +
+				"            +super\n" +
+				"            b after\n",
+			want: `<div><b>before</b><span>default</span><b>after</b></div>`,
+		},
+		{
+			name: "optional slot override may call empty super safely",
+			src: "@export comp box(;$slots={})\n" +
+				"    div\n" +
+				"        @slot extra\n" +
+				"@main\n" +
+				"    +box\n" +
+				"        @slot #extra\n" +
+				"            i hi\n" +
+				"            +super\n",
+			want: `<div><i>hi</i></div>`,
 		},
 		{
 			name: "scoped slot passes data",
@@ -70,7 +91,7 @@ func TestSlotRendering(t *testing.T) {
 				"        @slot row(item)\n" +
 				"            li {= item }\n" +
 				"@main\n" +
-				"    +list()\n" +
+				"    +list\n" +
 				"        @slot #row(item)\n" +
 				"            li.custom {= item }\n",
 			want: `<ul><li class="custom">X</li></ul>`,

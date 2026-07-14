@@ -60,3 +60,58 @@ Do not call exported symbols from another file as unqualified local names.
 @import "components.giom"
 +page_wrapper("Home")
 ```
+
+## Component/function calls — omit empty parentheses
+
+**For any component or function call without arguments, write `+name`, not
+`+name()`.** Add parentheses only when passing arguments.
+
+```giom
+// good
++super
++the_tags
++default_layout
+
+// bad
++super()
++the_tags()
++default_layout()
+```
+
+```giom
+// with arguments — parentheses required
++super(item)
++card("Fancy")
++default_layout(; config=config)
+```
+
+## Slot `super`
+
+**`super` is auto-injected as the first parameter of an overriding `@slot`.** Do
+not declare or bind it — no `@slot #name(;$super=nil)` and no
+`~ const super = $super`. Render the slot's default by calling `super`.
+
+```giom
+// good — super is available automatically
++card("Fancy")
+    @slot #header
+        em ★
+        +super
+
+// bad — manual super plumbing
++card("Fancy")
+    @slot #header(;$super=nil)
+        ~ const super = $super
+        em ★
+        +super()
+```
+
+- A slot **with** default content passes that default as `super`; an
+  **optional** slot (no default body) passes an empty function, so `+super` is
+  always safe and renders nothing.
+- For a **scoped** slot, forward the scope arguments when rendering the default:
+  `+super(item)`.
+- You may name the first parameter `super` explicitly (e.g. alongside scope
+  parameters) — it is not injected twice: `@slot #item_image(super, item)`.
+- When invoking a slot function directly at gad level (bypassing `@slot`), pass
+  an empty super: `$slots["main"](func(*_){})`.

@@ -68,7 +68,7 @@ func TestPorted_Comp(t *testing.T) {
 
 func TestPorted_CompNoArguments(t *testing.T) {
 	portExpect(t,
-		"@comp a()\n    p Testing\n@main\n    +a()\n",
+		"@comp a()\n    p Testing\n@main\n    +a\n",
 		"<p>Testing</p>", nil)
 }
 
@@ -136,19 +136,19 @@ func TestPorted_TableComp(t *testing.T) {
 func TestPorted_CompOverrideMainSlot(t *testing.T) {
 	// caller replaces the slot content
 	portExpect(t,
-		"@comp message()\n    @slot main\n        | the message\n@main\n    +message()\n        | my msg\n",
+		"@comp message()\n    @slot main\n        | the message\n@main\n    +message\n        | my msg\n",
 		"my msg", nil)
 
-	// caller wraps the default via $super
+	// caller wraps the default via the auto-injected super
 	portExpect(t,
 		"@comp message()\n"+
 			"    @slot main\n"+
 			"        | default message\n"+
 			"@main\n"+
-			"    +message()\n"+
-			"        @slot #main(;$super=nil)\n"+
+			"    +message\n"+
+			"        @slot #main\n"+
 			"            {= \"my msg - \" }\n"+
-			"            ~ $super()\n",
+			"            +super\n",
 		"my msg - default message", nil)
 }
 
@@ -170,7 +170,7 @@ func TestPorted_Match(t *testing.T) {
 
 func TestPorted_RunErrorTrace(t *testing.T) {
 	// an unresolved comp call surfaces as a compile error at the call site
-	_, err := portRun(t, "@main\n    +b()\n", nil, nil)
+	_, err := portRun(t, "@main\n    +b\n", nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `unresolved reference "b"`)
 }

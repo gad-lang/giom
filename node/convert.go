@@ -255,6 +255,14 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	call.Args = c.Args.Args
 	call.NamedArgs = c.Args.NamedArgs
 
+	// A call to the auto-injected `super` forwards super's own super (an empty
+	// function) as its first positional argument, so the invoked default/override
+	// function — which also declares `super` first — receives a safe fallback and
+	// may itself call `super(…)` without failing.
+	if c.Name == "super" {
+		call.Args.Values = append([]gnode.Expr{emptySuperFunc(c.Pos(), c.End())}, call.Args.Values...)
+	}
+
 	if len(c.SlotPass) == 0 {
 		return gnode.Stmts{gnode.SExpr(call)}
 	}
@@ -276,8 +284,9 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 		if !ft.FuncPos.IsValid() {
 			ft.FuncPos = sp.Pos()
 		}
-		// Accept the `$super` the enclosing component passes when invoking the
-		// slot, so overriding content can render the default via `super`.
+		// Auto-inject `super` as the override's first positional parameter (the
+		// enclosing component passes the slot's default as this argument), so
+		// overriding content can render the default by calling `super(…)`.
 		withSuperParam(&ft.FuncHeader.Params)
 		stmts.Append(gnode.SDecl(&gnode.GenDecl{
 			Tok:    token.Const,
@@ -465,8 +474,8 @@ func slotScopeArgs(scope *gnode.FuncParams) (pos gnode.CallExprPositionalArgs, n
 	return
 }
 
-// slotDefaultParams returns the parameters for a slot's default function: its
-// scope parameters plus a `$super` named parameter defaulting to nil.
+// slotDefaultParams returns the parameters for a slot's default function: a
+// leading `super` positional parameter followed by its scope parameters.
 func slotDefaultParams(scope *gnode.FuncParams) *gnode.FuncParams {
 	out := &gnode.FuncParams{}
 	if scope != nil {
@@ -478,26 +487,39 @@ func slotDefaultParams(scope *gnode.FuncParams) *gnode.FuncParams {
 	return withSuperParam(out)
 }
 
-// withSuperParam appends a `$super` named parameter (default nil) unless present.
+// withSuperParam prepends a `super` positional parameter unless the first
+// positional parameter is already named `super`. `super` is auto-injected so a
+// slot override can render the slot's default content by calling `super(…)`.
 func withSuperParam(params *gnode.FuncParams) *gnode.FuncParams {
 	if params == nil {
 		params = &gnode.FuncParams{}
 	}
-	for _, n := range params.NamedArgs.Names {
-		if n != nil && n.Ident != nil && n.Ident.Name == "$super" {
+	if len(params.Args.Values) > 0 {
+		if first := params.Args.Values[0]; first != nil && first.Ident != nil && first.Ident.Name == "super" {
 			return params
 		}
 	}
-	params.NamedArgs.Names = append(params.NamedArgs.Names, &gnode.TypedIdentExpr{Ident: gnode.EIdent("$super", 0)})
-	params.NamedArgs.Values = append(params.NamedArgs.Values, gnode.LNil(0))
+	params.Args.PrependValue(&gnode.TypedIdentExpr{Ident: gnode.EIdent("super", 0)})
 	return params
 }
 
-// convertSlot compiles an `@slot` declaration. A slot with default content
-// compiles to a default function, `var $slot$ID = ($slots.ID ?? $slot$ID$)` and
-// a call passing `$super` (so an overriding slot can render the default via
-// `super`). A slot with no default content compiles to a nullish call
-// `$slots.ID?.(scope…)` so it renders only when provided.
+// emptySuperFunc builds a variadic no-op function used as the `super` value for
+// optional slots (those without default content), so calling `super(…)` from an
+// override is always safe and renders nothing.
+func emptySuperFunc(pos, end source.Pos) *gnode.FuncExpr {
+	params := &gnode.FuncParams{Args: gnode.ArgsList{Var: &gnode.TypedIdentExpr{Ident: gnode.EIdent("_", pos)}}}
+	return funcExpr(params, nil, pos, end)
+}
+
+// convertSlot compiles an `@slot` declaration. `super` is always the resolved
+// slot function's first positional argument, so an overriding slot may render
+// the fallback by calling `super(…)`.
+//
+// A slot with default content compiles to a default function, a
+// `var $slot$ID = ($slots.ID ?? $slot$ID$)` binding and a call passing the
+// default function `$slot$ID$` as `super`. A slot with no default content
+// compiles to a nullish call `$slots.ID?.(superEmpty, scope…)` (so it renders
+// only when provided), passing an empty-body function as `super`.
 func convertSlot(s *SlotDecl) gnode.Stmts {
 	slotsSel := gnode.ESelector(gnode.EIdent("$slots", s.Pos()), gnode.Str(s.ID, s.Pos()))
 	posArgs, namedArgs := slotScopeArgs(s.Scope)
@@ -505,6 +527,7 @@ func convertSlot(s *SlotDecl) gnode.Stmts {
 	if len(s.Body) == 0 {
 		call := &gnode.NullishCallExpr{Func: slotsSel}
 		call.Args = posArgs
+		call.Args.Values = append([]gnode.Expr{emptySuperFunc(s.Pos(), s.End())}, call.Args.Values...)
 		call.NamedArgs = namedArgs
 		return gnode.Stmts{gnode.SExpr(call)}
 	}
@@ -536,8 +559,8 @@ func convertSlot(s *SlotDecl) gnode.Stmts {
 	}))
 	call := &gnode.CallExpr{Func: gnode.EIdent(varName, s.Pos())}
 	call.Args = posArgs
+	call.Args.Values = append([]gnode.Expr{gnode.EIdent(defName, s.Pos())}, call.Args.Values...)
 	call.NamedArgs = namedArgs
-	call.NamedArgs.AppendS("$super", gnode.EIdent(defName, s.Pos()))
 	stmts.Append(gnode.SExpr(call))
 	return stmts
 }

@@ -86,7 +86,9 @@ If the caller does not pass content, the default slot body is rendered.
 
 A slot with no default body is optional: it renders only when the caller
 provides content, and nothing otherwise (it compiles to a nullish call
-`$slots.name?.()`).
+`$slots.name?.(super)`). Even an optional slot's override receives a usable
+`super` — an empty function — so calling `super` there is always safe and
+simply renders nothing.
 
 ```giom
 @export comp panel
@@ -99,8 +101,8 @@ provides content, and nothing otherwise (it compiles to a nullish call
 ## Rendering The Default With `super`
 
 When a caller overrides a slot, its content can render the component's default
-by calling `super`. The default is passed to the slot as the `$super` named
-argument; bind it to a local `super` to call it.
+by calling `super`. **`super` is auto-injected as the override's first
+parameter** — you do not declare or bind it. Just call `super(…)`:
 
 ```giom
 @export comp button(label)
@@ -110,11 +112,28 @@ argument; bind it to a local `super` to call it.
 
 @main
     +button("Save")
-        @slot #main(;$super=nil)
-            ~ const super = $super
+        @slot #main
             em ★
-            +super()          // renders the default <span>Save</span>
+            +super          // renders the default <span>Save</span>
 ```
+
+You may name the first parameter `super` explicitly (for example when you also
+declare scope parameters) — it will not be injected twice:
+
+```giom
+        @slot #main(super)
+            em ★
+            +super
+```
+
+For a slot **with** default content, `super` renders that content; for an
+**optional** slot (no default), `super` is an empty function, so `super`
+renders nothing. Because a scoped slot's default expects its scope arguments,
+forward them when rendering the default via `super`, e.g. `+super(item)`.
+
+> **Convention:** call `super` (and any argument-less component) without empty
+> parentheses — `+super`, not `+super()`. See
+> [conventions.md](conventions.md#componentfunction-calls--omit-empty-parentheses).
 
 ## Slot Parameters
 
@@ -172,7 +191,7 @@ Then import what your application resolver supports:
 
 @main
     +page("Contact")
-        +contact_form()
+        +contact_form
 ```
 
 ## Composition Guidelines

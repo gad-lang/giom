@@ -28,13 +28,13 @@
     +card("Plain")
 
     //- 2) override header, then render the default header via super
+    //-    `super` is auto-injected as the override's first parameter.
     +card("Fancy")
         @slot #badge
             span.badge NEW
-        @slot #header(;$super=nil)
-            ~ const super = $super
+        @slot #header
             em ★
-            +super()
+            +super
 
     //- 3) scoped slot override receiving the row value
     +list(["a", "b", "c"])

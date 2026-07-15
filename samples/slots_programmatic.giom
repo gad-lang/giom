@@ -26,7 +26,7 @@
     ~~
     box(; slots={
         main: func(super) {
-            giom$write("<b>hi</b>")
+            giom.write("<b>hi</b>")
             super(func(*_){})            // render the default (super's super = empty)
         },
     })
@@ -35,7 +35,7 @@
     //- 2) a scoped slot, ignoring super — receives (super, i, it)
     ~~
     list(["a", "b"]; slots={
-        row: func(super, i, it) { giom$write("<b>" + it + "</b>") },
+        row: func(super, i, it) { giom.write("<b>" + it + "</b>") },
     })
     ~~
 
@@ -43,7 +43,7 @@
     ~~
     list(["a", "b"]; slots={
         row: func(super, i, it) {
-            giom$write("* ")
+            giom.write("* ")
             super(func(*_){}, i, it)
         },
     })

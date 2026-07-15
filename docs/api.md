@@ -14,12 +14,16 @@ import "github.com/gad-lang/giom"
 func AppendBuiltins(b *gad.Builtins) *gad.Builtins
 ```
 
-Registers Giom builtins in a Gad builtins set:
+Registers the `giom` module as a non-loadable builtin namespace. After this
+call the following names are available globally in every compiled template
+without any `@import`:
 
-- `giom$escape`
-- `giom$attr`
-- `giom$attrs`
-- `giom$write`
+| Name | Description |
+|------|-------------|
+| `giom.escape` | Return its argument as a raw (unescaped) string |
+| `giom.attr` | Render a single `name="value"` attribute fragment |
+| `giom.attrs` | Render multiple attributes from named arguments |
+| `giom.write` | Write a value to the output (HTML-escaped for text, raw for `RawStr`) |
 
 Use it before compiling and before constructing the VM.
 

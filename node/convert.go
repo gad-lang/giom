@@ -748,7 +748,7 @@ func convertHtml(h *HtmlStmt) gnode.Stmts {
 }
 
 func convertDoctype(d *DoctypeStmt) gnode.Stmts {
-	call := gnode.ECall(gnode.EIdent("giom$write", 0), 0, 0)
+	call := giomCallExpr("write", 0)
 	if !call.LParen.IsValid() {
 		call.LParen = d.NodePos
 	}
@@ -764,7 +764,7 @@ func convertText(t *TextStmt) gnode.Stmts {
 	for _, stmt := range t.Stmts {
 		switch s := stmt.(type) {
 		case *gnode.MixedTextStmt:
-			call := gnode.ECall(gnode.EIdent("giom$write", 0), 0, 0)
+			call := giomCallExpr("write", 0)
 			if !call.LParen.IsValid() {
 				call.LParen = t.NodePos
 			}
@@ -774,7 +774,7 @@ func convertText(t *TextStmt) gnode.Stmts {
 			call.Args.Values = append(call.Args.Values, gnode.Str(s.Value(), s.Pos()))
 			out.Append(gnode.SExpr(call))
 		case *gnode.MixedValueStmt:
-			call := gnode.ECall(gnode.EIdent("giom$write", 0), 0, 0)
+			call := giomCallExpr("write", 0)
 			if !call.LParen.IsValid() {
 				call.LParen = t.NodePos
 			}

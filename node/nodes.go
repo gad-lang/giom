@@ -59,7 +59,7 @@ func (t *TextStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 	for _, stmt := range t.Stmts {
 		switch s := stmt.(type) {
 		case *gnode.MixedTextStmt:
-			call := gnode.ECall(gnode.EIdent("giom$write", 0), 0, 0)
+			call := giomCallExpr("write", 0)
 			if !call.LParen.IsValid() {
 				call.LParen = t.NodePos
 			}
@@ -69,7 +69,7 @@ func (t *TextStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 			call.Args.Values = append(call.Args.Values, gnode.Str(s.Value(), s.Pos()))
 			ctx.WriteStmts(gnode.SExpr(call))
 		case *gnode.MixedValueStmt:
-			call := gnode.ECall(gnode.EIdent("giom$write", 0), 0, 0)
+			call := giomCallExpr("write", 0)
 			if !call.LParen.IsValid() {
 				call.LParen = t.NodePos
 			}
@@ -121,6 +121,10 @@ func (t *TagStmt) End() source.Pos { return t.NodeEnd }
 func (t *TagStmt) StmtNode()       {}
 func (t *TagStmt) String() string  { return fmt.Sprintf("giom.Tag(%s)", t.Name) }
 
+func giomCallExpr(method string, pos source.Pos) *gnode.CallExpr {
+	return gnode.ECall(gnode.ESelector(gnode.EIdent("giom", pos), gnode.Str(method, 0)), 0, 0)
+}
+
 func writeCallExpr(s string) *gnode.CallExpr {
 	return writeCallExprs(rawStrExpr(s))
 }
@@ -140,7 +144,7 @@ func (t *TagStmt) WriteCode(ctx *gnode.CodeWriteContext) {
 }
 
 func buildAttrsCall(attrs []*TagAttribute, pos ...source.Pos) gnode.Expr {
-	call := gnode.ECall(gnode.EIdent("giom$attrs", 0), 0, 0)
+	call := giomCallExpr("attrs", 0)
 	if len(pos) > 0 {
 		if !call.LParen.IsValid() {
 			call.LParen = pos[0]
@@ -201,7 +205,7 @@ type HtmlStmt struct {
 	ast.NodeData
 	NodePos source.Pos
 	NodeEnd source.Pos
-	// Stmts are the lowered Gad statements (write/giom$write/giom$attr calls)
+	// Stmts are the lowered Gad statements (write/giom.write/giom.attr calls)
 	// produced from the HTML region.
 	Stmts gnode.Stmts
 }
@@ -232,7 +236,7 @@ func (d *DoctypeStmt) StmtNode()       {}
 func (d *DoctypeStmt) String() string  { return fmt.Sprintf("giom.Doctype(%s)", d.Value) }
 
 func (d *DoctypeStmt) WriteCode(ctx *gnode.CodeWriteContext) {
-	call := gnode.ECall(gnode.EIdent("giom$write", 0), 0, 0)
+	call := giomCallExpr("write", 0)
 	if !call.LParen.IsValid() {
 		call.LParen = d.NodePos
 	}

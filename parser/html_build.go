@@ -10,8 +10,8 @@ import (
 
 // buildHtmlStmts turns a raw HTML region into the Gad statements that render it:
 // literal markup becomes `write(raw "…")`, a `{expr}` text interpolation becomes
-// `giom$write(expr)` (HTML-escaped), and an interpolated attribute becomes
-// `write(giom$attr(name, value))` (auto-quoted and escaped). Runs of whitespace
+// `giom.write(expr)` (HTML-escaped), and an interpolated attribute becomes
+// `write(giom.attr(name, value))` (auto-quoted and escaped). Runs of whitespace
 // in text content are collapsed to a single space. base is the absolute source
 // position of raw[0], so interpolation expressions keep their source positions.
 func buildHtmlStmts(raw string, base source.Pos) gnode.Stmts {
@@ -321,13 +321,13 @@ func writeRawStmt(lit string, pos source.Pos) gnode.Stmt {
 }
 
 func writeEscStmt(expr gnode.Expr) gnode.Stmt {
-	call := gnode.ECall(gnode.EIdent("giom$write", expr.Pos()), expr.Pos(), expr.End())
+	call := gnode.ECall(gnode.ESelector(gnode.EIdent("giom", expr.Pos()), gnode.Str("write", 0)), expr.Pos(), expr.End())
 	call.Args.Values = append(call.Args.Values, expr)
 	return gnode.SExpr(call)
 }
 
 func writeAttrStmt(nameExpr, valExpr gnode.Expr) gnode.Stmt {
-	attr := gnode.ECall(gnode.EIdent("giom$attr", nameExpr.Pos()), nameExpr.Pos(), valExpr.End())
+	attr := gnode.ECall(gnode.ESelector(gnode.EIdent("giom", nameExpr.Pos()), gnode.Str("attr", 0)), nameExpr.Pos(), valExpr.End())
 	attr.Args.Values = append(attr.Args.Values, nameExpr, valExpr)
 	call := gnode.ECall(gnode.EIdent("write", nameExpr.Pos()), nameExpr.Pos(), valExpr.End())
 	call.Args.Values = append(call.Args.Values, attr)

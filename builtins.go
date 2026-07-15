@@ -9,7 +9,8 @@ import (
 
 var (
 	BuiltinEscape = &gad.Function{
-		FuncName: "giom$escape",
+		FuncName: "giom.escape",
+		Module:   ModuleSpec,
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			if err = call.Args.CheckLen(1); err != nil {
 				return
@@ -83,7 +84,8 @@ var (
 	}
 
 	BuiltinAttr = &gad.Function{
-		FuncName: "giom$attr",
+		FuncName: "giom.attr",
+		Module:   ModuleSpec,
 		Value: func(call gad.Call) (ret gad.Object, err error) {
 			if err = call.Args.CheckLen(2); err != nil {
 				return
@@ -95,7 +97,8 @@ var (
 	}
 
 	BuiltinAttrs = &gad.Function{
-		FuncName: "giom$attrs",
+		FuncName: "giom.attrs",
+		Module:   ModuleSpec,
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			var (
 				b      strings.Builder
@@ -292,19 +295,21 @@ var (
 	}
 
 	BuiltinTextWrite = &gad.Function{
-		FuncName: "giom$write",
+		FuncName: "giom.write",
+		Module:   ModuleSpec,
 		Value: func(call gad.Call) (_ gad.Object, err error) {
 			return call.VM.Builtins.Call(gad.BuiltinWrite, call)
 		},
 	}
 )
 
-// AppendBuiltins registers giom built-in functions (escape, attr, attrs, write)
-// into the given Builtins and returns it.
+// AppendBuiltins registers the giom module as a non-loadable builtin namespace,
+// making giom.escape, giom.attr, giom.attrs, and giom.write available globally.
 func AppendBuiltins(b *gad.Builtins) *gad.Builtins {
-	b.Set(BuiltinEscape.FuncName, BuiltinEscape)
-	b.Set(BuiltinAttr.FuncName, BuiltinAttr)
-	b.Set(BuiltinAttrs.FuncName, BuiltinAttrs)
-	b.Set(BuiltinTextWrite.FuncName, BuiltinTextWrite)
+	mod := newModule()
+	b.Set(ModuleSpec.Name, mod)
+	for k, v := range mod {
+		b.Set(ModuleSpec.Name+"."+k, v)
+	}
 	return b
 }

@@ -476,7 +476,7 @@ func (c *CompDecl) String() string  { return fmt.Sprintf("giom.Comp(%s)", c.Name
 
 func (c *CompDecl) WriteCode(ctx *gnode.CodeWriteContext) {
 	ctx.WriteString("const " + c.ID + " = func")
-	ctx.WriteString(renderFuncParams(c.ParamsRaw, c.Params, "$slots={}"))
+	ctx.WriteString(renderFuncParams(c.ParamsRaw, c.Params, "slots={}"))
 	ctx.WriteString(" {")
 	ctx.WriteSemi()
 	ctx.Depth++
@@ -540,7 +540,7 @@ type SlotDecl struct {
 	Name    string
 	ID      string
 	// NameExpr, when set, is the interpolated slot name from `@slot (…)`. The
-	// `$slots` lookup then uses `$slots[NameExpr]` and ID is a synthetic id for
+	// `slots` lookup then uses `slots[NameExpr]` and ID is a synthetic id for
 	// the generated local variables.
 	NameExpr gnode.Expr
 	Scope    *gnode.FuncParams
@@ -565,7 +565,7 @@ func (s *SlotDecl) WriteCode(ctx *gnode.CodeWriteContext) {
 	ctx.WriteSemi()
 	ctx.WriteString("}")
 	ctx.WriteSemi()
-	ctx.WriteString("var $slot$" + s.ID + " = $slots." + s.ID + " ?? $slot$" + s.ID + "$")
+	ctx.WriteString("var $slot$" + s.ID + " = slots." + s.ID + " ?? $slot$" + s.ID + "$")
 }
 
 // =============================================================================

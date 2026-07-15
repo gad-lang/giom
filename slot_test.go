@@ -10,7 +10,7 @@ import (
 // optional (no-default) slots that render only when provided, scoped slots that
 // pass data, and `$super` used to render the default from an override.
 func TestSlotRendering(t *testing.T) {
-	box := "@export comp box(;$slots={})\n" +
+	box := "@export comp box(;slots={})\n" +
 		"    div\n" +
 		"        @slot main\n" +
 		"            span default\n"
@@ -35,7 +35,7 @@ func TestSlotRendering(t *testing.T) {
 		},
 		{
 			name: "optional slot not provided renders nothing",
-			src: "@export comp box(;$slots={})\n" +
+			src: "@export comp box(;slots={})\n" +
 				"    div\n" +
 				"        @slot extra\n" +
 				"@main\n    +box\n",
@@ -43,7 +43,7 @@ func TestSlotRendering(t *testing.T) {
 		},
 		{
 			name: "optional slot provided",
-			src: "@export comp box(;$slots={})\n" +
+			src: "@export comp box(;slots={})\n" +
 				"    div\n" +
 				"        @slot extra\n" +
 				"@main\n" +
@@ -73,7 +73,7 @@ func TestSlotRendering(t *testing.T) {
 		},
 		{
 			name: "optional slot override may call empty super safely",
-			src: "@export comp box(;$slots={})\n" +
+			src: "@export comp box(;slots={})\n" +
 				"    div\n" +
 				"        @slot extra\n" +
 				"@main\n" +
@@ -85,7 +85,7 @@ func TestSlotRendering(t *testing.T) {
 		},
 		{
 			name: "scoped slot passes data",
-			src: "@export comp list(;$slots={})\n" +
+			src: "@export comp list(;slots={})\n" +
 				"    ~ item := \"X\"\n" +
 				"    ul\n" +
 				"        @slot row(item)\n" +

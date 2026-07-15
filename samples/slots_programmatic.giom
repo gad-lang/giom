@@ -1,7 +1,7 @@
 //- Passing slots programmatically from gad source.
 //-
 //- `@slot #name` / `+super` are sugar: a component compiles to a gad function
-//- that takes a `$slots` dict, and each entry is a slot function. You can build
+//- that takes a `slots` dict, and each entry is a slot function. You can build
 //- that dict yourself in a `~~ … ~~` code block and call the component directly.
 //-
 //- A slot function's first parameter is `super` (the component's default for
@@ -9,12 +9,12 @@
 //- super for you — a raw call passes it by hand, so `super(…)` must supply
 //- super's own super (an empty function) as its first argument.
 
-@export comp box(;$slots={})
+@export comp box(;slots={})
     div
         @slot main
             span default
 
-@export comp list(items;$slots={})
+@export comp list(items;slots={})
     ul
         @for i, it in items
             li
@@ -24,7 +24,7 @@
 @main
     //- 1) equivalent to: +box { @slot #main { b hi; +super } }
     ~~
-    box(; $slots={
+    box(; slots={
         main: func(super) {
             giom$write("<b>hi</b>")
             super(func(*_){})            // render the default (super's super = empty)
@@ -34,14 +34,14 @@
 
     //- 2) a scoped slot, ignoring super — receives (super, i, it)
     ~~
-    list(["a", "b"]; $slots={
+    list(["a", "b"]; slots={
         row: func(super, i, it) { giom$write("<b>" + it + "</b>") },
     })
     ~~
 
     //- 3) a scoped slot forwarding the scope to super: super(empty, i, it)
     ~~
-    list(["a", "b"]; $slots={
+    list(["a", "b"]; slots={
         row: func(super, i, it) {
             giom$write("* ")
             super(func(*_){}, i, it)

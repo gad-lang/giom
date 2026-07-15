@@ -86,7 +86,7 @@ If the caller does not pass content, the default slot body is rendered.
 
 A slot with no default body is optional: it renders only when the caller
 provides content, and nothing otherwise (it compiles to a nullish call
-`$slots.name?.(super)`). Even an optional slot's override receives a usable
+`slots.name?.(super)`). Even an optional slot's override receives a usable
 `super` — an empty function — so calling `super` there is always safe and
 simply renders nothing.
 
@@ -172,16 +172,16 @@ A runnable version of scoped slots and `super` forwarding is in
 ## Passing Slots Programmatically
 
 `@slot #name` and `+super` are sugar. A component compiles to a gad function that
-takes a `$slots` dict, so you can build that dict yourself in a `~~ … ~~` code
+takes a `slots` dict, so you can build that dict yourself in a `~~ … ~~` code
 block and call the component directly — useful when the set of slots is dynamic.
 
-Each `$slots` entry is a slot function whose **first parameter is `super`** (the
+Each `slots` entry is a slot function whose **first parameter is `super`** (the
 component's default for that slot), followed by the slot's scope parameters.
 Unlike `+super`, a raw `super(…)` call is not rewritten, so it must pass super's
 own super (an empty function) as its first argument.
 
 ```giom
-@export comp list(items;$slots={})
+@export comp list(items;slots={})
     ul
         @for i, it in items
             li
@@ -191,14 +191,14 @@ own super (an empty function) as its first argument.
 @main
     //- render every row bold, ignoring the default
     ~~
-    list(["a", "b"]; $slots={
+    list(["a", "b"]; slots={
         row: func(super, i, it) { giom$write("<b>" + it + "</b>") },
     })
     ~~
 
     //- prefix each row, then render the default via super (scope forwarded)
     ~~
-    list(["a", "b"]; $slots={
+    list(["a", "b"]; slots={
         row: func(super, i, it) {
             giom$write("* ")
             super(func(*_){}, i, it)   // +super(i, it) sugars to this
@@ -212,7 +212,7 @@ See `samples/slots_programmatic.giom` for a runnable version.
 ## Dynamic Slot Names
 
 A slot name may be written in parentheses as a Gad template string, so a `{expr}`
-interpolation is evaluated at render time and used as the `$slots[…]` key. This
+interpolation is evaluated at render time and used as the `slots[…]` key. This
 works for both the declaration and the pass (override):
 
 ```giom

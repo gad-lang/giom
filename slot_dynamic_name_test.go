@@ -10,11 +10,11 @@ import (
 // TestSlotDynamicName covers interpolated slot names: `@slot (name[{expr}])`
 // (declaration) and `@slot #(name[{expr}])` (pass). The `( … )` content is a Gad
 // template string, so `{expr}` is evaluated at render time and used as the
-// `$slots[…]` key. Also covers hoisting call-block `~` code to call scope.
+// `slots[…]` key. Also covers hoisting call-block `~` code to call scope.
 func TestSlotDynamicName(t *testing.T) {
 	// A component whose per-iteration slot name is computed from the loop index,
 	// giving each row its own overridable slot.
-	const list = "@comp list(items;$slots={})\n" +
+	const list = "@comp list(items;slots={})\n" +
 		"\t@for i, it in items\n" +
 		"\t\t@slot (item[{i}])(it)\n" +
 		"\t\t\t| {=it};\n"
@@ -100,7 +100,7 @@ func TestSlotDynamicNamePositions(t *testing.T) {
 			// line 4: the `{z()}` in a slot declaration name
 			name: "declaration name",
 			src: "@global z\n" +
-				"@comp c(;$slots={})\n" +
+				"@comp c(;slots={})\n" +
 				"    @slot (k[{z()}])\n" +
 				"        | x\n" +
 				"@main\n" +
@@ -111,7 +111,7 @@ func TestSlotDynamicNamePositions(t *testing.T) {
 			// line 4: the `{z()}` in a slot pass name
 			name: "pass name",
 			src: "@global z\n" +
-				"@comp c(;$slots={})\n" +
+				"@comp c(;slots={})\n" +
 				"    @slot k\n" +
 				"        | x\n" +
 				"@main\n" +

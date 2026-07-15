@@ -106,4 +106,4 @@ not declare it and do not bind it to a local — just call `super`.
 - You may name the first parameter `super` explicitly (e.g. alongside scope
   parameters) — it is not injected twice: `@slot #item_image(super, item)`.
 - When invoking a slot function directly at gad level (bypassing `@slot`), pass
-  an empty super: `$slots["main"](func(*_){})`.
+  an empty super: `slots["main"](func(*_){})`.

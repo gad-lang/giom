@@ -13,7 +13,7 @@ import (
 // auto-injected `super`.
 //
 // `compPrintLines` renders each row through a scoped `@slot line(i, line)`. Its
-// default looks up a per-index override `$slots["line[i]"]`; when present it
+// default looks up a per-index override `slots["line[i]"]`; when present it
 // invokes it, passing the default renderer `print_line` as the override's
 // `super` (its auto-injected first parameter), otherwise it renders the default
 // line directly.
@@ -24,7 +24,7 @@ const compPrintLines = "@comp print_lines(rows)\n" +
 	"\t@for i, line in rows\n" +
 	"\t\t@slot line(i, line)\n" +
 	"\t\t\t~~\n" +
-	"\t\t\tconst custom = $slots[\"line[\"+i+\"]\"]\n" +
+	"\t\t\tconst custom = slots[\"line[\"+i+\"]\"]\n" +
 	"\t\t\t(custom ? (*args) => custom(print_line, *args) : print_line)(i, line)\n" +
 	"\t\t\t~~\n"
 

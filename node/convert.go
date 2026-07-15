@@ -189,12 +189,12 @@ func addSlotsParam(params *gnode.FuncParams) *gnode.FuncParams {
 		return nil
 	}
 	for _, n := range params.NamedArgs.Names {
-		if n != nil && n.Ident != nil && n.Ident.Name == "$slots" {
+		if n != nil && n.Ident != nil && n.Ident.Name == "slots" {
 			return params
 		}
 	}
 	out := *params
-	out.NamedArgs.Names = append(out.NamedArgs.Names, &gnode.TypedIdentExpr{Ident: gnode.EIdent("$slots", 0)})
+	out.NamedArgs.Names = append(out.NamedArgs.Names, &gnode.TypedIdentExpr{Ident: gnode.EIdent("slots", 0)})
 	out.NamedArgs.Values = append(out.NamedArgs.Values, &gnode.DictExpr{})
 	return &out
 }
@@ -285,7 +285,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	//   const $slot0 = func(...) { ... }
 	//   var $$slots = {}
 	//   $$slots["main"] = $slot0
-	//   page_wrapper(args; $slots=$$slots)
+	//   page_wrapper(args; slots=$$slots)
 	slotPrefix := fmt.Sprintf("$slot%d", c.Pos())
 	slotsName := fmt.Sprintf("$$slots%d", c.Pos())
 	for i, sp := range c.SlotPass {
@@ -341,7 +341,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 			TokenPos: sp.Pos(),
 		})
 	}
-	call.NamedArgs.AppendS("$slots", gnode.EIdent(slotsName, 0))
+	call.NamedArgs.AppendS("slots", gnode.EIdent(slotsName, 0))
 	stmts.Append(gnode.SExpr(call))
 	return stmts
 }
@@ -547,17 +547,17 @@ func emptySuperFunc(pos, end source.Pos) *gnode.FuncExpr {
 // the fallback by calling `super(…)`.
 //
 // A slot with default content compiles to a default function, a
-// `var $slot$ID = ($slots.ID ?? $slot$ID$)` binding and a call passing the
+// `var $slot$ID = (slots.ID ?? $slot$ID$)` binding and a call passing the
 // default function `$slot$ID$` as `super`. A slot with no default content
-// compiles to a nullish call `$slots.ID?.(superEmpty, scope…)` (so it renders
+// compiles to a nullish call `slots.ID?.(superEmpty, scope…)` (so it renders
 // only when provided), passing an empty-body function as `super`.
 func convertSlot(s *SlotDecl) gnode.Stmts {
 	var slotsSel gnode.Expr
 	if s.NameExpr != nil {
-		// Interpolated name: `$slots[<nameExpr>]`.
-		slotsSel = &gnode.IndexExpr{X: gnode.EIdent("$slots", s.Pos()), Index: s.NameExpr}
+		// Interpolated name: `slots[<nameExpr>]`.
+		slotsSel = &gnode.IndexExpr{X: gnode.EIdent("slots", s.Pos()), Index: s.NameExpr}
 	} else {
-		slotsSel = gnode.ESelector(gnode.EIdent("$slots", s.Pos()), gnode.Str(s.ID, s.Pos()))
+		slotsSel = gnode.ESelector(gnode.EIdent("slots", s.Pos()), gnode.Str(s.ID, s.Pos()))
 	}
 	posArgs, namedArgs := slotScopeArgs(s.Scope)
 

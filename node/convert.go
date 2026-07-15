@@ -128,6 +128,8 @@ func convertStmt(s gnode.Stmt) gnode.Stmts {
 		return convertText(st)
 	case *TagStmt:
 		return convertTag(st)
+	case *HtmlStmt:
+		return convertHtml(st)
 	default:
 		return gnode.Stmts{s}
 	}
@@ -734,6 +736,15 @@ func convertTag(t *TagStmt) gnode.Stmts {
 	return gnode.Stmts{
 		gnode.SBlock(t.Pos(), t.End(), stmts...),
 	}
+}
+
+// convertHtml lowers a raw HTML region to its pre-built write statements,
+// wrapped in a block to keep them grouped.
+func convertHtml(h *HtmlStmt) gnode.Stmts {
+	if len(h.Stmts) == 0 {
+		return nil
+	}
+	return gnode.Stmts{gnode.SBlock(h.Pos(), h.End(), h.Stmts...)}
 }
 
 func convertDoctype(d *DoctypeStmt) gnode.Stmts {

@@ -85,6 +85,39 @@ div[title=join(items, ", "), data-ids=[1, 2, 3]]
 
 A trailing `? condition` applies to every attribute in the group.
 
+## Raw HTML
+
+A line starting with `<` is parsed as a raw HTML region. It runs from the
+opening tag to its matching close tag (spanning multiple lines if needed); giom
+indentation inside is ignored and runs of whitespace collapse to a single space.
+`<> … </>` is a fragment: it renders its children with no wrapping element.
+
+```giom
+@main
+    <a href="/" class="link">Home</a>
+
+    <ul>
+        <li>one</li>
+        <li>two</li>
+    </ul>
+```
+
+Attributes may be interpolated with `{expr}` — both the value and the name. An
+interpolated value is auto-quoted and HTML-escaped (a falsy value drops the
+attribute); an interpolated name builds the attribute name from the expression.
+`{expr}` also interpolates text content. Interpolation source positions are
+preserved.
+
+```giom
+@main
+    <a href={post.URL} data-{key}={value}>
+        {post.Title}
+    </a>
+```
+
+A runnable example is in `samples/html.giom`. Use the pug-style `tag[attr=…]`
+syntax (below) when you prefer giom's indentation-based nesting.
+
 ## Text
 
 Inline text:

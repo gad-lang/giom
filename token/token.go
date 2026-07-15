@@ -36,6 +36,7 @@ const (
 	Var
 	Const
 	Enum
+	Html
 	tokMax
 )
 
@@ -71,6 +72,7 @@ var tokNames = [...]string{
 	Var:          "VAR",
 	Const:        "CONST",
 	Enum:         "ENUM",
+	Html:         "HTML",
 }
 
 // String returns a human-readable name for a giom token.

@@ -170,6 +170,9 @@ func (s *scanner) Scan() (t gadparser.PToken) {
 		if tok := s.scanMCode(); tok.Valid() {
 			return tok
 		}
+		if tok := s.scanHtml(); tok.Valid() {
+			return tok
+		}
 		if tok := s.scanTag(); tok.Valid() {
 			return tok
 		}
@@ -682,6 +685,56 @@ func (s *scanner) scanSlotPass() gadparser.PToken {
 		return pt
 	}
 	return gadparser.PToken{}
+}
+
+// scanHtml scans a self-contained raw HTML region beginning with `<` — an
+// opening tag `<name …>` or a `<>` fragment. The region runs to its matching
+// close tag (spanning multiple lines if needed) and is stored verbatim as the
+// token value with its absolute base position; the parser turns it into write
+// calls, collapsing whitespace and evaluating `{ … }` interpolations.
+func (s *scanner) scanHtml() gadparser.PToken {
+	if len(s.buffer) < 2 || s.buffer[0] != '<' {
+		return gadparser.PToken{}
+	}
+	c := s.buffer[1]
+	isLetter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	if !(c == '>' || isLetter) {
+		return gadparser.PToken{}
+	}
+	base0 := source.Pos(s.file.Base + s.offset - len(s.buffer) - 1)
+	s.ensureHtmlComplete(0)
+	end, ok := htmlRegionEnd(s.buffer, 0)
+	if !ok {
+		return gadparser.PToken{}
+	}
+	raw := s.buffer[:end]
+	s.consume(end)
+	pt := s.newToken(giomtoken.Html, raw, raw)
+	pt.Set("htmlPos", base0)
+	return pt
+}
+
+// ensureHtmlComplete pulls additional source lines into the buffer until the
+// HTML region opened at s.buffer[start] closes, or input ends. The separating
+// newline is preserved so buffer offsets stay aligned with file offsets.
+func (s *scanner) ensureHtmlComplete(start int) {
+	for {
+		if _, ok := htmlRegionEnd(s.buffer, start); ok {
+			return
+		}
+		buf, err := s.reader.ReadString('\n')
+		if len(buf) == 0 {
+			return
+		}
+		s.offset += len(buf)
+		if buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+		s.buffer += "\n" + buf
+		if err != nil {
+			return
+		}
+	}
 }
 
 var rgxTag = regexp.MustCompile(`^(\w[-:/\w]*)`)

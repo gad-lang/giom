@@ -194,6 +194,28 @@ func exprKeyName(e gnode.Expr) string {
 }
 
 // =============================================================================
+// HtmlStmt — a raw HTML region (`<tag …>…</tag>` or `<>…</>` fragment)
+// =============================================================================
+
+type HtmlStmt struct {
+	ast.NodeData
+	NodePos source.Pos
+	NodeEnd source.Pos
+	// Stmts are the lowered Gad statements (write/giom$write/giom$attr calls)
+	// produced from the HTML region.
+	Stmts gnode.Stmts
+}
+
+func (h *HtmlStmt) Pos() source.Pos { return h.NodePos }
+func (h *HtmlStmt) End() source.Pos { return h.NodeEnd }
+func (h *HtmlStmt) StmtNode()       {}
+func (h *HtmlStmt) String() string  { return "giom.Html" }
+
+func (h *HtmlStmt) WriteCode(ctx *gnode.CodeWriteContext) {
+	ctx.WriteStmts(h.Stmts...)
+}
+
+// =============================================================================
 // DoctypeStmt — DOCTYPE declaration
 // =============================================================================
 

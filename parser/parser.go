@@ -127,6 +127,8 @@ func (p *Parser) parseStmt() gnode.Stmt {
 		return p.parseComment()
 	case giomtoken.Text:
 		return p.parseText()
+	case giomtoken.Html:
+		return p.parseHtml()
 	case giomtoken.Tag:
 		return p.parseTag()
 	case giomtoken.Id, giomtoken.ClassName, giomtoken.Attribute:
@@ -266,6 +268,22 @@ func (p *Parser) parseText() *giomnode.TextStmt {
 	}
 
 	return t
+}
+
+func (p *Parser) parseHtml() *giomnode.HtmlStmt {
+	tok := p.Token
+	p.expect(giomtoken.Html)
+
+	raw := stringData(tok, "value", tok.Literal)
+	base := posData(tok, "htmlPos")
+	if base == noBase {
+		base = tok.Pos
+	}
+	return &giomnode.HtmlStmt{
+		NodePos: tok.Pos,
+		NodeEnd: tok.Pos + source.Pos(len(tok.Literal)),
+		Stmts:   buildHtmlStmts(raw, base),
+	}
 }
 
 func (p *Parser) parseTag() *giomnode.TagStmt {

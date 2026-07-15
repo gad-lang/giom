@@ -37,9 +37,10 @@ func TestScannerPopulatesLineTable(t *testing.T) {
 	}
 }
 
-// posLine resolves a node position to its 1-based source line.
-func posLine(fs *source.FileSet, pos source.Pos) int {
-	return fs.Position(pos).Line
+// posLineCol resolves a node position to its 1-based source line and column.
+func posLineCol(fs *source.FileSet, pos source.Pos) (line, col int) {
+	p := fs.Position(pos)
+	return p.Line, p.Column
 }
 
 // findFirstCode returns the first CodeStmt found by depth-first walk over the
@@ -89,9 +90,9 @@ func TestCodeStmtPositionMapsToSourceLine(t *testing.T) {
 	if code == nil {
 		t.Fatal("no code statement found")
 	}
-	got := posLine(fs, code.Stmts[0].Pos())
-	if got != 3 {
-		t.Fatalf("code statement resolved to line %d, want 3", got)
+	// line 3, col 7: `value` in `    ~ value := compute()`
+	if line, col := posLineCol(fs, code.Stmts[0].Pos()); line != 3 || col != 7 {
+		t.Fatalf("code statement resolved to %d:%d, want 3:7", line, col)
 	}
 }
 
@@ -109,10 +110,10 @@ func TestMultiLineCodePositionMapsToSourceLine(t *testing.T) {
 	if code == nil || len(code.Stmts) < 2 {
 		t.Fatalf("expected >= 2 statements in ~~ block, got %v", code)
 	}
-	if got := posLine(fs, code.Stmts[0].Pos()); got != 3 {
-		t.Fatalf("first statement resolved to line %d, want 3", got)
+	if line, col := posLineCol(fs, code.Stmts[0].Pos()); line != 3 || col != 5 {
+		t.Fatalf("first statement resolved to %d:%d, want 3:5", line, col)
 	}
-	if got := posLine(fs, code.Stmts[1].Pos()); got != 4 {
-		t.Fatalf("second statement resolved to line %d, want 4", got)
+	if line, col := posLineCol(fs, code.Stmts[1].Pos()); line != 4 || col != 5 {
+		t.Fatalf("second statement resolved to %d:%d, want 4:5", line, col)
 	}
 }

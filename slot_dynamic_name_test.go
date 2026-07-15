@@ -95,9 +95,10 @@ func TestSlotDynamicNamePositions(t *testing.T) {
 		name     string
 		src      string
 		wantLine int
+		wantCol  int
 	}{
 		{
-			// line 4: the `{z()}` in a slot declaration name
+			// line 3, col 16: the `{z()}` in a slot declaration name
 			name: "declaration name",
 			src: "@global z\n" +
 				"@comp c(;slots={})\n" +
@@ -106,9 +107,10 @@ func TestSlotDynamicNamePositions(t *testing.T) {
 				"@main\n" +
 				"    +c\n",
 			wantLine: 3,
+			wantCol:  16,
 		},
 		{
-			// line 4: the `{z()}` in a slot pass name
+			// line 7, col 21: the `{z()}` in a slot pass name
 			name: "pass name",
 			src: "@global z\n" +
 				"@comp c(;slots={})\n" +
@@ -119,6 +121,7 @@ func TestSlotDynamicNamePositions(t *testing.T) {
 				"        @slot #(k[{z()}])\n" +
 				"            | y\n",
 			wantLine: 7,
+			wantCol:  21,
 		},
 	}
 	for _, tc := range tests {
@@ -127,8 +130,10 @@ func TestSlotDynamicNamePositions(t *testing.T) {
 			if !strings.Contains(re.Error(), "NotCallableError") {
 				t.Fatalf("expected NotCallableError, got: %v", re.Error())
 			}
-			if got := firstTraceLine(re); got != tc.wantLine {
-				t.Fatalf("stack trace line = %d, want %d\ntrace:\n%+v", got, tc.wantLine, re.StackTrace())
+			line, col := firstTraceLineCol(re)
+			if line != tc.wantLine || col != tc.wantCol {
+				t.Fatalf("stack trace position = %d:%d, want %d:%d\ntrace:\n%+v",
+					line, col, tc.wantLine, tc.wantCol, re.StackTrace())
 			}
 		})
 	}

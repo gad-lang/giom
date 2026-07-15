@@ -73,16 +73,17 @@ func TestAttributeGroupRendering(t *testing.T) {
 }
 
 // TestAttributeExpressionPosition verifies a runtime error inside a multi-line
-// attribute value reports the correct source line.
+// attribute value reports the correct source line and column.
 func TestAttributeExpressionPosition(t *testing.T) {
 	src := "@global bad\n" +
 		"@main\n" +
 		"    div[\n" +
 		"        class=\"a\"\n" +
-		"        title=bad()\n" + // line 5
+		"        title=bad()\n" + // line 5, col 18 (the call `(`)
 		"    ] hi\n"
 	re := runForError(t, src)
-	if got := firstTraceLine(re); got != 5 {
-		t.Fatalf("attribute nil-call resolved to line %d, want 5\ntrace:\n%+v", got, re.StackTrace())
+	line, col := firstTraceLineCol(re)
+	if line != 5 || col != 18 {
+		t.Fatalf("attribute nil-call resolved to %d:%d, want 5:18\ntrace:\n%+v", line, col, re.StackTrace())
 	}
 }

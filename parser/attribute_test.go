@@ -124,7 +124,7 @@ func TestAttributeCommaInsideValueNotSplit(t *testing.T) {
 }
 
 func TestAttributeValuePositionMapsToSourceLine(t *testing.T) {
-	// The expression value on line 5 must resolve to line 5.
+	// The expression value `compute()` on line 5 must resolve to line 5, col 15.
 	src := "@main\n" +
 		"    div[\n" +
 		"        class=\"a\"\n" +
@@ -141,7 +141,8 @@ func TestAttributeValuePositionMapsToSourceLine(t *testing.T) {
 	if titleVal == nil {
 		t.Fatal("title attribute value not found")
 	}
-	if got := fs.Position(titleVal.Pos()).Line; got != 5 {
-		t.Fatalf("title value resolved to line %d, want 5", got)
+	p := fs.Position(titleVal.Pos())
+	if p.Line != 5 || p.Column != 15 {
+		t.Fatalf("title value resolved to %d:%d, want 5:15", p.Line, p.Column)
 	}
 }

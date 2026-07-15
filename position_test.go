@@ -46,36 +46,40 @@ func runForError(t *testing.T, src string) *gad.RuntimeError {
 	return re
 }
 
-// firstTraceLine returns the line number of the deepest (last) stack frame.
-func firstTraceLine(re *gad.RuntimeError) int {
+// firstTraceLineCol returns the line and column of the deepest (last) stack
+// frame.
+func firstTraceLineCol(re *gad.RuntimeError) (line, col int) {
 	trace := re.StackTrace()
 	if len(trace) == 0 {
-		return -1
+		return -1, -1
 	}
-	return trace[len(trace)-1].Line
+	f := trace[len(trace)-1]
+	return f.Line, f.Column
 }
 
 // TestPositionPreservationRuntime verifies that a nil-call inside various giom
-// constructs reports the correct source line in the runtime error stack trace.
-// Before the fix, giom never populated the source file's line table nor mapped
-// fragment positions, so every position resolved to line 1.
+// constructs reports the correct source line and column in the runtime error
+// stack trace. Before the fix, giom never populated the source file's line table
+// nor mapped fragment positions, so every position resolved to line 1, column 1.
 func TestPositionPreservationRuntime(t *testing.T) {
 	tests := []struct {
 		name     string
 		src      string
 		wantLine int
+		wantCol  int
 	}{
 		{
 			name: "single-line-code",
-			// line 3: ~ x()
+			// line 3, col 8: ~ x()  (the call `(`)
 			src: "@global x\n" +
 				"@main\n" +
 				"    ~ x()\n",
 			wantLine: 3,
+			wantCol:  8,
 		},
 		{
 			name: "multi-line-code",
-			// line 5: y()
+			// line 5, col 6: y()
 			src: "@global y\n" +
 				"@main\n" +
 				"    ~~\n" +
@@ -83,27 +87,30 @@ func TestPositionPreservationRuntime(t *testing.T) {
 				"    y()\n" +
 				"    ~~\n",
 			wantLine: 5,
+			wantCol:  6,
 		},
 		{
 			name: "interpolation",
-			// line 3: div {= z() }
+			// line 3, col 13: div {= z() }
 			src: "@global z\n" +
 				"@main\n" +
 				"    div {= z() }\n",
 			wantLine: 3,
+			wantCol:  13,
 		},
 		{
 			name: "if-condition",
-			// line 3: @if w()
+			// line 3, col 6: @if w()
 			src: "@global w\n" +
 				"@main\n" +
 				"    @if w()\n" +
 				"        p yes\n",
 			wantLine: 3,
+			wantCol:  6,
 		},
 		{
 			name: "deeper-line",
-			// line 6: bad()
+			// line 6, col 18: bad()
 			src: "@global bad\n" +
 				"@main\n" +
 				"    div\n" +
@@ -111,6 +118,7 @@ func TestPositionPreservationRuntime(t *testing.T) {
 				"            ~ a := 1\n" +
 				"            ~ bad()\n",
 			wantLine: 6,
+			wantCol:  18,
 		},
 	}
 
@@ -120,8 +128,10 @@ func TestPositionPreservationRuntime(t *testing.T) {
 			if !strings.Contains(re.Error(), "NotCallableError") {
 				t.Fatalf("expected NotCallableError, got: %v", re.Error())
 			}
-			if got := firstTraceLine(re); got != tc.wantLine {
-				t.Fatalf("stack trace line = %d, want %d\ntrace:\n%+v", got, tc.wantLine, re.StackTrace())
+			line, col := firstTraceLineCol(re)
+			if line != tc.wantLine || col != tc.wantCol {
+				t.Fatalf("stack trace position = %d:%d, want %d:%d\ntrace:\n%+v",
+					line, col, tc.wantLine, tc.wantCol, re.StackTrace())
 			}
 		})
 	}

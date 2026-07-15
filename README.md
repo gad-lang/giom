@@ -91,6 +91,11 @@ func main() {
 }
 ```
 
+`giom.Compile` is shorthand for `giom.NewCompiler(st, opts).Compile(src)`. To
+compile several sources with the same symbol table and options, build one
+`giom.Compiler` and reuse it, or use the caching [`Render`](docs/embedding.md)
+struct.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)

@@ -40,6 +40,28 @@ func Render(src []byte, globals gad.Dict) (string, error) {
 }
 ```
 
+## Reusing A Compiler
+
+`giom.Compile` is shorthand for `giom.NewCompiler(st, opts).Compile(input)`. When
+you compile several sources with the same symbol table and options, construct one
+`Compiler` and reuse it:
+
+```go
+c := giom.NewCompiler(st, gad.CompileOptions{})
+
+for _, src := range sources {
+    _, bc, err := c.Compile(src)
+    if err != nil {
+        return err
+    }
+    // run bc on a Gad VM…
+}
+```
+
+Each `Compile` call returns the parsed Giom AST and executable Gad bytecode. For
+automatic bytecode caching and file-change detection, prefer the `Render` struct
+below.
+
 ## Render Struct (Cached Compilation)
 
 `giom.Render` provides a ready-to-use template engine with bytecode caching and

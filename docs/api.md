@@ -33,13 +33,39 @@ builtins := giom.AppendBuiltins(gad.NewBuiltins())
 func Compile(st *gad.SymbolTable, input []byte, opts gad.CompileOptions) (*node.File, *gad.Bytecode, error)
 ```
 
-Parses Giom source and compiles it to Gad bytecode.
+Parses Giom source and compiles it to Gad bytecode. It is shorthand for
+`NewCompiler(st, opts).Compile(input)`.
 
 ```go
 file, bc, err := giom.Compile(st, src, gad.CompileOptions{})
 ```
 
 `file` is the parsed Giom AST. `bc` is executable Gad bytecode.
+
+## `Compiler`
+
+```go
+type Compiler struct { /* unexported */ }
+
+func NewCompiler(st *gad.SymbolTable, opts gad.CompileOptions) *Compiler
+func (c *Compiler) Compile(input []byte) (*node.File, *gad.Bytecode, error)
+```
+
+A `Compiler` binds a symbol table and compile options so the same configured
+compiler can compile multiple inputs. Construct one with `NewCompiler` and call
+`Compile` for each source; each call returns the parsed Giom AST and executable
+Gad bytecode, exactly like the package-level [`Compile`](#compile).
+
+```go
+c := giom.NewCompiler(st, gad.CompileOptions{})
+
+_, bcHome, err := c.Compile([]byte("@main\n    p Home\n"))
+// ...
+_, bcAbout, err := c.Compile([]byte("@main\n    p About\n"))
+```
+
+A nil symbol table is created on demand at compile time. The package-level
+`Compile` is simply `NewCompiler(st, opts).Compile(input)`.
 
 ## `CompileFile`
 

@@ -44,3 +44,8 @@ Always use the native Go 1.25 toolchain commands:
 - **Node.js & Package Manager Environment**:
     - Always load and use Node.js **v26.3.0** by prepending or executing `nvm use v26.3.0` before running any Node script, bundler, or build step.
     - **NEVER use `npm` or `yarn`**. You **MUST ALWAYS use `pnpm`** for package installation, script execution, and dependency management.
+
+## Tasks
+- **New tasks:** `todo.md`
+- **Done tasks:** `todo_done.md`
+- **When a task is DONE**, move it to `todo_done.md`.

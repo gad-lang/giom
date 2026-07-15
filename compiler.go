@@ -14,10 +14,24 @@ import (
 	giomparser "github.com/gad-lang/giom/parser"
 )
 
+// Compiler compiles giom v2 source into GAD bytecode. Construct one with
+// NewCompiler and call Compile; the same Compiler may compile multiple inputs
+// with the same symbol table and options.
+type Compiler struct {
+	st   *gad.SymbolTable
+	opts gad.CompileOptions
+}
+
+// NewCompiler returns a Compiler bound to the given symbol table and compile
+// options. A nil symbol table is created on demand when compiling.
+func NewCompiler(st *gad.SymbolTable, opts gad.CompileOptions) *Compiler {
+	return &Compiler{st: st, opts: opts}
+}
+
 // Compile parses giom v2 source and compiles it to GAD bytecode.
-func Compile(st *gad.SymbolTable, input []byte, opts gad.CompileOptions) (*giomnode.File, *gad.Bytecode, error) {
+func (c *Compiler) Compile(input []byte) (*giomnode.File, *gad.Bytecode, error) {
 	fs := source.NewFileSet()
-	filename := opts.CompilerOptions.ModuleFile
+	filename := c.opts.CompilerOptions.ModuleFile
 	if filename == "" {
 		filename = gad.MainName
 	}
@@ -27,8 +41,14 @@ func Compile(st *gad.SymbolTable, input []byte, opts gad.CompileOptions) (*giomn
 	if err != nil {
 		return nil, nil, err
 	}
-	bc, err := CompileFile(st, &gad.ModuleSpec{ModuleInfo: gad.ModuleInfo{Name: gad.MainName}, Main: true}, file, opts)
+	bc, err := CompileFile(c.st, &gad.ModuleSpec{ModuleInfo: gad.ModuleInfo{Name: gad.MainName}, Main: true}, file, c.opts)
 	return file, bc, err
+}
+
+// Compile parses giom v2 source and compiles it to GAD bytecode. It is
+// shorthand for NewCompiler(st, opts).Compile(input).
+func Compile(st *gad.SymbolTable, input []byte, opts gad.CompileOptions) (*giomnode.File, *gad.Bytecode, error) {
+	return NewCompiler(st, opts).Compile(input)
 }
 
 // CompileFile compiles a parsed giom v2 file to GAD bytecode.

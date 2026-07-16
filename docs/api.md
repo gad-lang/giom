@@ -20,8 +20,7 @@ without any `@import`:
 
 | Name | Description |
 |------|-------------|
-| `giom.Tag` | Construct a tag element: `giom.Tag([parent,] name, *children; **attrs)` |
-| `giom.AnonymousTag` | Construct a nameless fragment tag: `giom.AnonymousTag([parent])` |
+| `giom.Tag` | Construct a tag element: `giom.Tag([parent,] name, *children; **attrs)`. Omit the name (`giom.Tag()` / `giom.Tag(parent)`) for a nameless fragment. |
 | `giom.Text` | Construct a text node: `giom.Text([parent,] v1, v2, …)` |
 | `giom.escape` | Return its argument as a raw (unescaped) string |
 | `giom.attr` | Render a single `name="value"` attribute fragment |
@@ -41,8 +40,9 @@ tree** of `Element` values and returns its root; the caller (or `Render`) walks
 the tree, writing HTML via `Element.WriteTo`. The tree types are:
 
 - `giom.Tag` — a tag element with a name, ordered attributes (regular
-  attributes, a class list and styles) and child elements. A tag with an empty
-  name is an *anonymous fragment* that renders only its children.
+  attributes, a class list and styles) and child elements. Constructed without a
+  name (`giom.Tag()` / `giom.Tag(parent)`) it is an *anonymous fragment* that
+  renders only its children.
 - `giom.Text` — a leaf node holding a sequence of values written in order.
 
 Each constructor optionally takes the **parent tag as its first argument** and

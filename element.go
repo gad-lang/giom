@@ -30,26 +30,16 @@ type Element interface {
 
 // TagType is the Gad object type of *Tag. Calling it constructs a tag:
 //
-//	giom.Tag(name, *children; **attrs)
+//	giom.Tag([parent,] name, *children; **attrs)
+//
+// Omitting the name (giom.Tag() / giom.Tag(parent)) yields an anonymous
+// (fragment) tag: it has no name and on render writes only its children, without
+// a surrounding element. Components/slots build into one and return it.
 var TagType = gad.NewBuiltinObjType("Tag").WithNew(tagCtor)
 
 // TextType is the Gad object type of *TextElement. Calling it wraps a value as
 // a text node: giom.Text(value).
 var TextType = gad.NewBuiltinObjType("Text").WithNew(textCtor)
-
-// BuiltinAnonymousTag constructs an anonymous (fragment) tag in two forms:
-// giom.AnonymousTag(parent) or giom.AnonymousTag(). An anonymous tag has no
-// name; on render it writes only its children, without a surrounding element.
-// Components/slots build into one and return it. When a parent tag is given
-// (a *Tag first argument), the new tag links itself as a child.
-var BuiltinAnonymousTag = &gad.Function{
-	FuncName: "giom.AnonymousTag",
-	Module:   ModuleSpec,
-	Value: func(c gad.Call) (gad.Object, error) {
-		parent, _ := parentArg(c)
-		return NewTag(parent, "", nil, nil), nil
-	},
-}
 
 func init() {
 	TagType.SetModule(ModuleSpec)
@@ -94,7 +84,8 @@ func NewTag(parent *Tag, name string, children []Element, attrs gad.KeyValueArra
 //
 // The parent is detected by the first positional argument's type (see
 // parentArg); the tag name is the next positional and any remaining positionals
-// are static children.
+// are static children. When no name is given (giom.Tag() / giom.Tag(parent)),
+// the tag is anonymous (empty name) and renders only its children.
 func tagCtor(c gad.Call) (gad.Object, error) {
 	parent, i := parentArg(c)
 	name := ""

@@ -48,7 +48,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 		{
 			name: "nested tags and text",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					tag := giom.Tag(tag, "div"; class="a")
 					{
@@ -63,12 +63,12 @@ func TestTreeBuildBlocks(t *testing.T) {
 			want: `<div class="a">hi<span>x</span></div>`,
 		},
 		{
-			// Parentless constructor forms: giom.AnonymousTag() / giom.Tag(name) /
+			// Parentless constructor forms: giom.Tag() / giom.Tag(name) /
 			// giom.Text(values) — no leading parent argument. Children are wired by
 			// explicit appends instead of self-linking.
 			name: "parentless constructor forms",
 			src: `
-				tag := giom.AnonymousTag()
+				tag := giom.Tag()
 				{
 					div := giom.Tag("div"; id="x")
 					div += giom.Text(raw "hi")
@@ -82,7 +82,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 			// giom.Tag(nil, name) and giom.Tag(name) are equivalent.
 			name: "nil parent equals parentless",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					a := giom.Tag(nil, "b")
 					giom.Text(a, raw "x")
@@ -94,7 +94,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 		{
 			name: "many children",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					tag := giom.Tag(tag, "ul")
 					{
@@ -108,7 +108,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 		{
 			name: "dynamic attrs and single attr",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					tag := giom.Tag(tag, "div")
 					{
@@ -125,7 +125,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 			// directly (regular attrs first, then class, then style).
 			name: "class array and style",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					tag := giom.Tag(tag, "div"; id="x", class=["a", "b"], style="color:red")
 					{ giom.Text(tag, raw "y") }
@@ -137,7 +137,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 			// Incremental single-attribute writes: class tokens accumulate.
 			name: "incremental class and attr",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					tag := giom.Tag(tag, "div")
 					{
@@ -152,7 +152,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 		{
 			name: "multi-value text node",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					tag := giom.Tag(tag, "p")
 					{ giom.Text(tag, raw "a", raw "b", raw "c") }
@@ -163,7 +163,7 @@ func TestTreeBuildBlocks(t *testing.T) {
 		{
 			name: "anonymous fragment writes only children",
 			src: `
-				tag := giom.AnonymousTag(nil)
+				tag := giom.Tag(nil)
 				{
 					{ tag := giom.Tag(tag, "p"); { giom.Text(tag, raw "1") } }
 					{ tag := giom.Tag(tag, "p"); { giom.Text(tag, raw "2") } }

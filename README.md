@@ -80,21 +80,30 @@ func main() {
 
     var out bytes.Buffer
     vm := gad.NewVM(builtins.Build(), bc)
-    if _, err := vm.RunOpts(&gad.RunOpts{
+    ret, err := vm.RunOpts(&gad.RunOpts{
         StdOut:  &out,
         Globals: gad.Dict{"Name": gad.Str("Giom")},
-    }); err != nil {
+    })
+    if err != nil {
         log.Fatal(err)
+    }
+
+    // A compiled template builds a render tree and returns its root element;
+    // walk it to write the HTML output.
+    if el, ok := ret.(giom.Element); ok {
+        if _, err := el.WriteTo(vm, &out); err != nil {
+            log.Fatal(err)
+        }
     }
 
     log.Print(out.String())
 }
 ```
 
-`giom.Compile` is shorthand for `giom.NewCompiler(st, opts).Compile(src)`. To
-compile several sources with the same symbol table and options, build one
-`giom.Compiler` and reuse it, or use the caching [`Render`](docs/embedding.md)
-struct.
+`giom.Compile` is shorthand for `giom.NewCompiler(st, opts).Compile(src)`. Give
+each independent template its own symbol table (a compiled template binds a root
+tag at the module top level), or use the caching [`Render`](docs/embedding.md)
+struct, which handles this for you.
 
 ## Documentation
 

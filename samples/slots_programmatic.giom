@@ -5,9 +5,12 @@
 //- that dict yourself in a `~~ … ~~` code block and call the component directly.
 //-
 //- A slot function's first parameter is `super` (the component's default for
-//- that slot); the slot's scope parameters follow. The template sugar forwards
-//- super for you — a raw call passes it by hand, so `super(…)` must supply
-//- super's own super (an empty function) as its first argument.
+//- that slot); the slot's scope parameters follow. Like a component, a slot
+//- function builds a fragment tag and returns it: create it with `giom.Tag(nil)`,
+//- append content, and `return` it. The template sugar forwards super for you —
+//- a raw call passes it by hand, so `super(…)` must supply super's own super (an
+//- empty function) as its first argument. Append the component's own result with
+//- `tag += …`.
 
 @export comp box(;slots={})
     div
@@ -24,27 +27,35 @@
 @main
     //- 1) equivalent to: +box { @slot #main { b hi; +super } }
     ~~
-    box(; slots={
+    tag += box(; slots={
         main: func(super) {
-            giom.write("<b>hi</b>")
-            super(func(*_){})            // render the default (super's super = empty)
+            tag := giom.Tag(nil)
+            giom.Text(tag, raw "<b>hi</b>")
+            tag += super(func(*_){})     // render the default (super's super = empty)
+            return tag
         },
     })
     ~~
 
     //- 2) a scoped slot, ignoring super — receives (super, i, it)
     ~~
-    list(["a", "b"]; slots={
-        row: func(super, i, it) { giom.write("<b>" + it + "</b>") },
+    tag += list(["a", "b"]; slots={
+        row: func(super, i, it) {
+            tag := giom.Tag(nil)
+            giom.Text(tag, raw "<b>" + it + "</b>")
+            return tag
+        },
     })
     ~~
 
     //- 3) a scoped slot forwarding the scope to super: super(empty, i, it)
     ~~
-    list(["a", "b"]; slots={
+    tag += list(["a", "b"]; slots={
         row: func(super, i, it) {
-            giom.write("* ")
-            super(func(*_){}, i, it)
+            tag := giom.Tag(nil)
+            giom.Text(tag, raw "* ")
+            tag += super(func(*_){}, i, it)
+            return tag
         },
     })
     ~~

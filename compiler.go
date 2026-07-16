@@ -64,7 +64,7 @@ func CompileFile(st *gad.SymbolTable, module *gad.ModuleSpec, file *giomnode.Fil
 		file.InputFile = fs.AddFileData(module.Name, -1, nil)
 	}
 
-	gadFile := &gp.File{InputFile: file.InputFile, Stmts: giomnode.Convert(file.Stmts)}
+	gadFile := &gp.File{InputFile: file.InputFile, Stmts: giomnode.ConvertFile(file.Stmts)}
 	if opts.CompilerOptions.FallbackFunc == nil {
 		opts.CompilerOptions.FallbackFunc = CompileFallback
 	}

@@ -20,16 +20,44 @@ without any `@import`:
 
 | Name | Description |
 |------|-------------|
+| `giom.Tag` | Construct a tag element: `giom.Tag([parent,] name, *children; **attrs)` |
+| `giom.AnonymousTag` | Construct a nameless fragment tag: `giom.AnonymousTag([parent])` |
+| `giom.Text` | Construct a text node: `giom.Text([parent,] v1, v2, …)` |
 | `giom.escape` | Return its argument as a raw (unescaped) string |
 | `giom.attr` | Render a single `name="value"` attribute fragment |
 | `giom.attrs` | Render multiple attributes from named arguments |
-| `giom.write` | Write a value to the output (HTML-escaped for text, raw for `RawStr`) |
+| `giom.write` | Write a value with the tree's text semantics (raw for `RawStr`) |
 
 Use it before compiling and before constructing the VM.
 
 ```go
 builtins := giom.AppendBuiltins(gad.NewBuiltins())
 ```
+
+### Render tree
+
+A compiled template does not stream HTML directly. Instead it builds a **render
+tree** of `Element` values and returns its root; the caller (or `Render`) walks
+the tree, writing HTML via `Element.WriteTo`. The tree types are:
+
+- `giom.Tag` — a tag element with a name, ordered attributes (regular
+  attributes, a class list and styles) and child elements. A tag with an empty
+  name is an *anonymous fragment* that renders only its children.
+- `giom.Text` — a leaf node holding a sequence of values written in order.
+
+Each constructor optionally takes the **parent tag as its first argument** and
+links the new element into it. Both forms are accepted:
+
+```
+giom.Tag(parent, "div"; class="a")   // linked to parent
+giom.Tag("div"; class="a")           // standalone (append it yourself)
+```
+
+The first argument is treated as the parent only when it is a tag or `nil`;
+otherwise it is the first content argument. The tag-building operators are
+`tag += child` (append one), `tag ++= children` (append many),
+`tag[name] = value` (set one attribute) and `tag.attrs += kva` (merge
+attributes).
 
 ## `Compile`
 
@@ -55,21 +83,23 @@ func NewCompiler(st *gad.SymbolTable, opts gad.CompileOptions) *Compiler
 func (c *Compiler) Compile(input []byte) (*node.File, *gad.Bytecode, error)
 ```
 
-A `Compiler` binds a symbol table and compile options so the same configured
-compiler can compile multiple inputs. Construct one with `NewCompiler` and call
-`Compile` for each source; each call returns the parsed Giom AST and executable
-Gad bytecode, exactly like the package-level [`Compile`](#compile).
+A `Compiler` binds a symbol table and compile options. Construct one with
+`NewCompiler` and call `Compile` for each source; each call returns the parsed
+Giom AST and executable Gad bytecode, exactly like the package-level
+[`Compile`](#compile).
 
 ```go
-c := giom.NewCompiler(st, gad.CompileOptions{})
-
-_, bcHome, err := c.Compile([]byte("@main\n    p Home\n"))
+_, bcHome, err := giom.NewCompiler(stHome, gad.CompileOptions{}).
+    Compile([]byte("@main\n    p Home\n"))
 // ...
-_, bcAbout, err := c.Compile([]byte("@main\n    p About\n"))
+_, bcAbout, err := giom.NewCompiler(stAbout, gad.CompileOptions{}).
+    Compile([]byte("@main\n    p About\n"))
 ```
 
-A nil symbol table is created on demand at compile time. The package-level
-`Compile` is simply `NewCompiler(st, opts).Compile(input)`.
+Give each independent template its own symbol table: a compiled template binds a
+root `tag` at the module top level, so a symbol table cannot be reused across
+separate compiles. A nil symbol table is created on demand at compile time. The
+package-level `Compile` is simply `NewCompiler(st, opts).Compile(input)`.
 
 ## `CompileFile`
 

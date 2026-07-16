@@ -19,6 +19,15 @@ func Convert(stmts gnode.Stmts) gnode.Stmts {
 	return mergeDecls(out)
 }
 
+// ConvertFile converts a whole giom file's top-level statements, wrapping them
+// so all render content (whether under @main or written bare at the top level)
+// builds into a single root tag that the program returns. Declarations, imports
+// and exports remain top-level statements between the root binding and the
+// return.
+func ConvertFile(stmts gnode.Stmts) gnode.Stmts {
+	return fragmentStmts(gnode.LNil(0), Convert(stmts), 0, 0)
+}
+
 // mergeDecls merges consecutive const/var GenDecl statements into grouped declarations.
 func mergeDecls(stmts gnode.Stmts) gnode.Stmts {
 	var out gnode.Stmts
@@ -88,6 +97,43 @@ func funcExpr(params *gnode.FuncParams, body gnode.Stmts, pos, end source.Pos) *
 		Type: funcType(params),
 		Body: gnode.SBlock(pos, end, body...),
 	}
+}
+
+// tagVar is the identifier that always names the current parent tag in scope.
+// Each tag/fragment opens a block that rebinds `tag` (via `:=`) to itself, so
+// nested content appends to it while sibling content sees the outer tag.
+const tagVar = "tag"
+
+func tagIdent(pos source.Pos) *gnode.IdentExpr { return gnode.EIdent(tagVar, pos) }
+
+// giomNew builds a `giom.<ctor>(args…)` constructor call.
+func giomNew(ctor string, pos, end source.Pos, args ...gnode.Expr) *gnode.CallExpr {
+	call := giomCallExpr(ctor, pos)
+	setParens(call, pos, end)
+	call.Args.Values = args
+	return call
+}
+
+// defineTag builds `tag := <rhs>` (a new block-scoped binding of the current tag).
+func defineTag(rhs gnode.Expr, pos source.Pos) gnode.Stmt {
+	return &gnode.AssignStmt{LHS: []gnode.Expr{tagIdent(pos)}, RHS: []gnode.Expr{rhs}, Token: token.Define, TokenPos: pos}
+}
+
+// appendToTag builds `tag += <expr>`, appending a rendered value (a component or
+// slot fragment) to the current tag.
+func appendToTag(expr gnode.Expr, pos source.Pos) gnode.Stmt {
+	return &gnode.AssignStmt{LHS: []gnode.Expr{tagIdent(pos)}, RHS: []gnode.Expr{expr}, Token: token.AddAssign, TokenPos: pos}
+}
+
+// fragmentStmts wraps body so it builds into a fresh anonymous root tag and
+// returns it: `tag := giom.AnonymousTag(<parent>); <body>; return tag`. Used for
+// @comp / @func / @slot / slot-pass bodies and the top-level @main.
+func fragmentStmts(parent gnode.Expr, body gnode.Stmts, pos, end source.Pos) gnode.Stmts {
+	var out gnode.Stmts
+	out.Append(defineTag(giomNew("AnonymousTag", pos, end, parent), pos))
+	out.Append(body...)
+	out.Append(gnode.SReturn(end, tagIdent(end)))
+	return out
 }
 
 func convertStmt(s gnode.Stmt) gnode.Stmts {
@@ -175,7 +221,8 @@ func convertBody(stmts gnode.Stmts) gnode.Stmts {
 
 func convertFuncDecl(f *FuncDecl) gnode.Stmts {
 	params := addSlotsParam(f.Params)
-	fn := funcExpr(params, convertBody(f.Body), f.Pos(), f.End())
+	body := fragmentStmts(gnode.LNil(f.Pos()), convertBody(f.Body), f.Pos(), f.End())
+	fn := funcExpr(params, body, f.Pos(), f.End())
 	stmts := recursiveFuncStmts(f.Name, fn, f.Pos())
 	if f.Exported {
 		stmts = append(stmts, &gnode.ExportStmt{
@@ -204,14 +251,17 @@ func addSlotsParam(params *gnode.FuncParams) *gnode.FuncParams {
 func convertCompDecl(c *CompDecl) gnode.Stmts {
 	var body gnode.Stmts
 	for _, comp := range c.Comps {
-		body = append(body, comp)
+		body = append(body, convertStmt(comp)...)
 	}
 	body = append(body, convertBody(c.Body)...)
 
 	if c.Main {
+		// @main content builds into the file's root tag (created by ConvertFile),
+		// so it is emitted inline; the surrounding wrapper returns the root.
 		return body
 	}
-	fn := funcExpr(addSlotsParam(c.Params), body, c.Pos(), c.End())
+	fnBody := fragmentStmts(gnode.LNil(c.Pos()), body, c.Pos(), c.End())
+	fn := funcExpr(addSlotsParam(c.Params), fnBody, c.Pos(), c.End())
 
 	stmts := recursiveFuncStmts(c.ID, fn, c.Pos())
 	if c.Exported {
@@ -268,7 +318,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	}
 
 	if len(c.SlotPass) == 0 && len(c.InitStmts) == 0 {
-		return gnode.Stmts{gnode.SExpr(call)}
+		return gnode.Stmts{appendToTag(call, c.Pos())}
 	}
 
 	// Call-scope init code (`~` / `~~ … ~~`) comes first, so interpolated slot
@@ -279,7 +329,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 	}
 
 	if len(c.SlotPass) == 0 {
-		stmts.Append(gnode.SExpr(call))
+		stmts.Append(appendToTag(call, c.Pos()))
 		return stmts
 	}
 
@@ -312,7 +362,8 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 					Values: []gnode.Expr{
 						&gnode.FuncExpr{
 							Type: ft,
-							Body: gnode.SBlock(sp.Pos(), sp.End(), convertBody(sp.Body)...),
+							Body: gnode.SBlock(sp.Pos(), sp.End(),
+								fragmentStmts(gnode.LNil(sp.Pos()), convertBody(sp.Body), sp.Pos(), sp.End())...),
 						},
 					},
 				},
@@ -344,7 +395,7 @@ func convertCompCall(c *CompCallStmt) gnode.Stmts {
 		})
 	}
 	call.NamedArgs.AppendS("slots", gnode.EIdent(slotsName, 0))
-	stmts.Append(gnode.SExpr(call))
+	stmts.Append(appendToTag(call, c.Pos()))
 	return stmts
 }
 
@@ -568,7 +619,7 @@ func convertSlot(s *SlotDecl) gnode.Stmts {
 		call.Args = posArgs
 		call.Args.Values = append([]gnode.Expr{emptySuperFunc(s.Pos(), s.End())}, call.Args.Values...)
 		call.NamedArgs = namedArgs
-		return gnode.Stmts{gnode.SExpr(call)}
+		return gnode.Stmts{appendToTag(call, s.Pos())}
 	}
 
 	defName := slotDefaultName(s.ID)
@@ -576,7 +627,8 @@ func convertSlot(s *SlotDecl) gnode.Stmts {
 
 	defFunc := &gnode.FuncExpr{
 		Type: funcType(slotDefaultParams(s.Scope)),
-		Body: gnode.SBlock(s.Pos(), s.End(), convertBody(s.Body)...),
+		Body: gnode.SBlock(s.Pos(), s.End(),
+			fragmentStmts(gnode.LNil(s.Pos()), convertBody(s.Body), s.Pos(), s.End())...),
 	}
 
 	var stmts gnode.Stmts
@@ -600,7 +652,7 @@ func convertSlot(s *SlotDecl) gnode.Stmts {
 	call.Args = posArgs
 	call.Args.Values = append([]gnode.Expr{gnode.EIdent(defName, s.Pos())}, call.Args.Values...)
 	call.NamedArgs = namedArgs
-	stmts.Append(gnode.SExpr(call))
+	stmts.Append(appendToTag(call, s.Pos()))
 	return stmts
 }
 
@@ -615,7 +667,8 @@ func convertSlotPass(s *SlotPassStmt) gnode.Stmts {
 					Values: []gnode.Expr{
 						&gnode.FuncExpr{
 							Type: s.FuncType,
-							Body: gnode.SBlock(s.Pos(), s.End(), convertBody(s.Body)...),
+							Body: gnode.SBlock(s.Pos(), s.End(),
+								fragmentStmts(gnode.LNil(s.Pos()), convertBody(s.Body), s.Pos(), s.End())...),
 						},
 					},
 				},
@@ -711,81 +764,130 @@ func convertIf(s *IfStmt) gnode.Stmts {
 	return gnode.Stmts{ifStmt}
 }
 
+// convertTag lowers a tag to a block that binds `tag` to a new giom.Tag linked
+// to the enclosing tag, then builds its body into it:
+//
+//	{ tag := giom.Tag(tag, "name"; **attrs); <body> }
 func convertTag(t *TagStmt) gnode.Stmts {
-	var stmts gnode.Stmts
-	openCall := writeCallExpr("<" + t.Name)
-	setParens(openCall, t.NodePos, t.NodeEnd)
-	stmts.Append(gnode.SExpr(openCall))
+	ctor := giomNew("Tag", t.NodePos, t.NodeEnd,
+		tagIdent(t.NodePos), gnode.Str(t.Name, t.NodePos))
+	applyTagAttrs(ctor, t.Attributes)
 
-	if len(t.Attributes) > 0 {
-		stmts.Append(gnode.SExpr(buildAttrsCall(t.Attributes, t.NodePos, t.NodeEnd)))
+	inner := gnode.Stmts{defineTag(ctor, t.NodePos)}
+	if !t.SelfClosing {
+		inner = append(inner, convertBody(t.Body)...)
 	}
-	if t.SelfClosing {
-		closeCall := writeCallExpr(" />")
-		setParens(closeCall, t.NodePos, t.NodeEnd)
-		stmts.Append(gnode.SExpr(closeCall))
-		return stmts
-	}
-	closeOpen := writeCallExpr(">")
-	setParens(closeOpen, t.NodePos, t.NodeEnd)
-	stmts.Append(gnode.SExpr(closeOpen))
-	stmts.Append(convertBody(t.Body)...)
-	closeTag := writeCallExpr("</" + t.Name + ">")
-	setParens(closeTag, t.NodePos, t.NodeEnd)
-	stmts.Append(gnode.SExpr(closeTag))
-	return gnode.Stmts{
-		gnode.SBlock(t.Pos(), t.End(), stmts...),
+	return gnode.Stmts{gnode.SBlock(t.Pos(), t.End(), inner...)}
+}
+
+// applyTagAttrs adds a tag's attributes as named arguments of the giom.Tag call,
+// expanding `**attrs`-style groups into individual name=value pairs. giom.Tag
+// classifies them into regular attributes, class list and styles.
+func applyTagAttrs(call *gnode.CallExpr, attrs []*TagAttribute) {
+	for _, attr := range attrs {
+		if attr == nil {
+			continue
+		}
+		if attr.Elements != nil {
+			for _, el := range attr.Elements.Elements {
+				if kv, ok := el.(*gnode.KeyValuePairLit); ok {
+					addNamedArg(call, exprKeyName(kv.Key), kv.Value)
+				}
+			}
+			continue
+		}
+		value := attr.Value
+		if value == nil {
+			if attr.IsFlag {
+				value = gnode.Str(attr.Name, 0)
+			} else {
+				value = gnode.Str("", 0)
+			}
+		}
+		addNamedArg(call, attr.Name, value)
 	}
 }
 
-// convertHtml lowers a raw HTML region to its pre-built write statements,
-// wrapped in a block to keep them grouped.
+// convertHtml lowers a raw HTML region to a giom.Text append of its literal and
+// interpolated parts. The region's pre-lowered write statements are unwrapped
+// into the values of a single giom.Text(tag, …) call.
 func convertHtml(h *HtmlStmt) gnode.Stmts {
 	if len(h.Stmts) == 0 {
 		return nil
 	}
-	return gnode.Stmts{gnode.SBlock(h.Pos(), h.End(), h.Stmts...)}
+	var (
+		out    gnode.Stmts
+		values []gnode.Expr
+	)
+	flush := func() {
+		if len(values) == 0 {
+			return
+		}
+		out.Append(gnode.SExpr(textCall(h.Pos(), h.End(), values...)))
+		values = nil
+	}
+	for _, stmt := range h.Stmts {
+		if arg := htmlWriteArg(stmt); arg != nil {
+			values = append(values, arg)
+			continue
+		}
+		flush()
+		out.Append(stmt)
+	}
+	flush()
+	return gnode.Stmts{gnode.SBlock(h.Pos(), h.End(), out...)}
+}
+
+// htmlWriteArg returns the written value of a pre-lowered html write statement
+// (`write(x)` / `giom.write(x)`), or nil when stmt is not such a call.
+func htmlWriteArg(stmt gnode.Stmt) gnode.Expr {
+	es, ok := stmt.(*gnode.ExprStmt)
+	if !ok {
+		return nil
+	}
+	call, ok := es.Expr.(*gnode.CallExpr)
+	if !ok || len(call.Args.Values) == 0 {
+		return nil
+	}
+	return call.Args.Values[0]
+}
+
+// textCall builds `giom.Text(tag, values…)`.
+func textCall(pos, end source.Pos, values ...gnode.Expr) *gnode.CallExpr {
+	return giomNew("Text", pos, end, append([]gnode.Expr{tagIdent(pos)}, values...)...)
 }
 
 func convertDoctype(d *DoctypeStmt) gnode.Stmts {
-	call := giomCallExpr("write", 0)
-	if !call.LParen.IsValid() {
-		call.LParen = d.NodePos
-	}
-	if !call.RParen.IsValid() {
-		call.RParen = d.NodeEnd
-	}
-	call.Args.Values = append(call.Args.Values, gnode.Str(doctypeValue(d.Value), 0))
-	return gnode.Stmts{gnode.SExpr(call)}
+	raw := gnode.EToRaw(0, gnode.Str(doctypeValue(d.Value), 0))
+	return gnode.Stmts{gnode.SExpr(textCall(d.NodePos, d.NodeEnd, raw))}
 }
 
+// convertText lowers text content to giom.Text appends: consecutive literal and
+// interpolation segments coalesce into a single giom.Text(tag, …) call, while
+// any interleaved statement is emitted as-is.
 func convertText(t *TextStmt) gnode.Stmts {
-	var out gnode.Stmts
+	var (
+		out    gnode.Stmts
+		values []gnode.Expr
+	)
+	flush := func() {
+		if len(values) == 0 {
+			return
+		}
+		out.Append(gnode.SExpr(textCall(t.NodePos, t.NodeEnd, values...)))
+		values = nil
+	}
 	for _, stmt := range t.Stmts {
 		switch s := stmt.(type) {
 		case *gnode.MixedTextStmt:
-			call := giomCallExpr("write", 0)
-			if !call.LParen.IsValid() {
-				call.LParen = t.NodePos
-			}
-			if !call.RParen.IsValid() {
-				call.RParen = t.NodeEnd
-			}
-			call.Args.Values = append(call.Args.Values, gnode.Str(s.Value(), s.Pos()))
-			out.Append(gnode.SExpr(call))
+			values = append(values, gnode.Str(s.Value(), s.Pos()))
 		case *gnode.MixedValueStmt:
-			call := giomCallExpr("write", 0)
-			if !call.LParen.IsValid() {
-				call.LParen = t.NodePos
-			}
-			if !call.RParen.IsValid() {
-				call.RParen = t.NodeEnd
-			}
-			call.Args.Values = append(call.Args.Values, s.Expr)
-			out.Append(gnode.SExpr(call))
+			values = append(values, s.Expr)
 		case gnode.Stmt:
+			flush()
 			out.Append(s)
 		}
 	}
+	flush()
 	return out
 }

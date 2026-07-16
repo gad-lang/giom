@@ -2,7 +2,10 @@ module github.com/gad-lang/giom
 
 go 1.26.5
 
-require github.com/gad-lang/gad v0.0.2-0.20260706001951-ac25992c0e0c
+require (
+	github.com/gad-lang/gad v0.0.4-0.20260715161828-8c9f486acabe
+	github.com/stretchr/testify v1.11.1
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -11,10 +14,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/gad-lang/gad => ../gad

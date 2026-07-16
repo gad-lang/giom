@@ -5,6 +5,7 @@ The current repository root is the Giom implementation.
 ```text
 .
 ├── builtins.go
+├── element.go
 ├── compiler.go
 ├── go.mod
 ├── node/
@@ -26,6 +27,9 @@ Important exported functions:
 - `Compile`
 - `CompileFile`
 - `AppendBuiltins`
+
+`element.go` defines the render tree types (`Element`, `Tag`, `Text`) that a
+compiled template builds and returns; see [API Reference](api.md) for details.
 
 ## `node/`
 

@@ -8,27 +8,34 @@ import (
 )
 
 // TestCompilerCompile verifies that NewCompiler(...).Compile() produces runnable
-// bytecode, and that a single Compiler can compile multiple inputs.
+// bytecode for multiple inputs. Each input is compiled with its own symbol table
+// (as the render engine does per template): the tree model binds a root `tag` at
+// the module top level, so a symbol table is not shared across independent
+// compiles.
 func TestCompilerCompile(t *testing.T) {
 	builtins := AppendBuiltins(gad.NewBuiltins())
-	st := gad.NewSymbolTable(builtins.NameSet)
 	opts := gad.CompileOptions{CompilerOptions: gad.CompilerOptions{
 		FallbackFunc: CompileFallback,
 		ModuleMap:    testModuleMap(),
 	}}
 
-	c := NewCompiler(st, opts)
-
 	run := func(src string) string {
 		t.Helper()
-		_, bc, err := c.Compile([]byte(src))
+		st := gad.NewSymbolTable(builtins.NameSet)
+		_, bc, err := NewCompiler(st, opts).Compile([]byte(src))
 		if err != nil {
 			t.Fatalf("compile: %v\nsrc: %s", err, src)
 		}
 		var buf bytes.Buffer
 		vm := gad.NewVM(builtins.Build(), bc)
-		if _, err := vm.RunOpts(&gad.RunOpts{StdOut: &buf, Globals: gad.Dict{}}); err != nil {
+		ret, err := vm.RunOpts(&gad.RunOpts{StdOut: &buf, Globals: gad.Dict{}})
+		if err != nil {
 			t.Fatalf("run: %v", err)
+		}
+		if el, ok := ret.(Element); ok {
+			if _, err := el.WriteTo(vm, &buf); err != nil {
+				t.Fatalf("write: %v", err)
+			}
 		}
 		return buf.String()
 	}
@@ -69,8 +76,14 @@ func TestCompileDelegatesToCompiler(t *testing.T) {
 	out := func(bc *gad.Bytecode) string {
 		var buf bytes.Buffer
 		vm := gad.NewVM(builtins.Build(), bc)
-		if _, err := vm.RunOpts(&gad.RunOpts{StdOut: &buf, Globals: gad.Dict{}}); err != nil {
+		ret, err := vm.RunOpts(&gad.RunOpts{StdOut: &buf, Globals: gad.Dict{}})
+		if err != nil {
 			t.Fatalf("run: %v", err)
+		}
+		if el, ok := ret.(Element); ok {
+			if _, err := el.WriteTo(vm, &buf); err != nil {
+				t.Fatalf("write: %v", err)
+			}
 		}
 		return buf.String()
 	}

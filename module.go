@@ -13,11 +13,13 @@ func newModule() gad.Dict {
 		// gad:doc
 		// # giom module
 		// ## Types
-		// Tag is a type of tag Value
-		// "Tag":    TagType,
-		"escape": BuiltinEscape,
-		"attr":   BuiltinAttr,
-		"attrs":  BuiltinAttrs,
-		"write":  BuiltinTextWrite,
+		// Tag is a tag element type; Text wraps a value as a text node.
+		"Tag":          TagType,
+		"Text":         TextType,
+		"AnonymousTag": BuiltinAnonymousTag,
+		"escape":       BuiltinEscape,
+		"attr":         BuiltinAttr,
+		"attrs":        BuiltinAttrs,
+		"write":        BuiltinTextWrite,
 	}
 }

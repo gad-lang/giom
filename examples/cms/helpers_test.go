@@ -30,11 +30,9 @@ func newTestApp(t testing.TB) *App {
 		PublicDir:    filepath.Join(root, "public"),
 		TranspileDir: filepath.Join(root, "public", ".transpiled"),
 	}
-	app.renderer = &giom.Render{
-		WorkDir: app.PublicDir,
-		BuiltinsFunc: func() *gad.Builtins {
-			return giom.AppendBuiltins(gad.NewBuiltins())
-		},
+	app.renderer = giom.NewRender(app.PublicDir)
+	app.renderer.BuiltinsFunc = func() *gad.Builtins {
+		return giom.AppendBuiltins(gad.NewBuiltins())
 	}
 	if err := db.AutoMigrate(&Page{}, &Tag{}, &Post{}, &MenuItem{}); err != nil {
 		t.Fatalf("migrate: %v", err)

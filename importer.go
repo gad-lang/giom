@@ -128,7 +128,7 @@ func writeTranspiled(outPath string, stmts gnode.Stmts) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 		return fmt.Errorf("create transpile dir: %w", err)
 	}
-	converted := giomnode.Convert(stmts)
+	converted := giomnode.ConvertFile(stmts)
 	var buf bytes.Buffer
 	gnode.CodeW(&buf, converted, gnode.CodeWithPrefix("\t"), gnode.CodeFormat())
 	if !strings.HasSuffix(outPath, ".gad") {

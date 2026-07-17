@@ -53,10 +53,17 @@ if err != nil {
 
 var out bytes.Buffer
 vm := gad.NewVM(builtins.Build(), bc)
-_, err = vm.RunOpts(&gad.RunOpts{
+ret, err := vm.RunOpts(&gad.RunOpts{
     StdOut:  &out,
     Globals: gad.Dict{"Name": gad.Str("Giom")},
 })
+if err != nil {
+    return err
+}
+// The template returns the root of a render tree; write it to produce HTML.
+if el, ok := ret.(giom.Element); ok {
+    _, err = el.WriteTo(vm, &out)
+}
 ```
 
 Use the same `builtins` instance for the symbol table and VM. This keeps Gad

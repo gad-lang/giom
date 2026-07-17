@@ -33,28 +33,39 @@ func Render(src []byte, globals gad.Dict) (string, error) {
 
     var out bytes.Buffer
     vm := gad.NewVM(builtins.Build(), bc)
-    if _, err := vm.RunOpts(&gad.RunOpts{StdOut: &out, Globals: globals}); err != nil {
+    ret, err := vm.RunOpts(&gad.RunOpts{StdOut: &out, Globals: globals})
+    if err != nil {
         return "", err
+    }
+    // A compiled template builds a render tree and returns its root element;
+    // walk it to write the HTML output.
+    if el, ok := ret.(giom.Element); ok {
+        if _, err := el.WriteTo(vm, &out); err != nil {
+            return "", err
+        }
     }
     return out.String(), nil
 }
 ```
 
-## Reusing A Compiler
+The template does not stream HTML to `StdOut`; it returns the root of a render
+tree (a `giom.Element`) that you write with `WriteTo`. The `Render` struct below
+does this for you.
 
-`giom.Compile` is shorthand for `giom.NewCompiler(st, opts).Compile(input)`. When
-you compile several sources with the same symbol table and options, construct one
-`Compiler` and reuse it:
+## Compiling Several Templates
+
+`giom.Compile` is shorthand for `giom.NewCompiler(st, opts).Compile(input)`. Give
+each template its own symbol table: a compiled template binds a root `tag` at the
+module top level, so a symbol table is not shared across independent compiles.
 
 ```go
-c := giom.NewCompiler(st, gad.CompileOptions{})
-
 for _, src := range sources {
-    _, bc, err := c.Compile(src)
+    st := gad.NewSymbolTable(builtins.NameSet)
+    _, bc, err := giom.Compile(st, src, gad.CompileOptions{})
     if err != nil {
         return err
     }
-    // run bc on a Gad VM…
+    // run bc on a Gad VM and write the returned root element…
 }
 ```
 

@@ -210,11 +210,9 @@ func TestEmptyDBDoesNotPanic(t *testing.T) {
 		PublicDir:    filepath.Join(root, "public"),
 		TranspileDir: filepath.Join(root, "public", ".transpiled"),
 	}
-	emptyApp.renderer = &giom.Render{
-		WorkDir: emptyApp.PublicDir,
-		BuiltinsFunc: func() *gad.Builtins {
-			return giom.AppendBuiltins(gad.NewBuiltins())
-		},
+	emptyApp.renderer = giom.NewRender(emptyApp.PublicDir)
+	emptyApp.renderer.BuiltinsFunc = func() *gad.Builtins {
+		return giom.AppendBuiltins(gad.NewBuiltins())
 	}
 	db.AutoMigrate(&Page{}, &Tag{}, &Post{}, &MenuItem{})
 	emptyApp.cleanTranspiled()

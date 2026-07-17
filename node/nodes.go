@@ -56,32 +56,7 @@ func (t *TextStmt) StmtNode()       {}
 func (t *TextStmt) String() string  { return "giom.Text" }
 
 func (t *TextStmt) WriteCode(ctx *gnode.CodeWriteContext) {
-	for _, stmt := range t.Stmts {
-		switch s := stmt.(type) {
-		case *gnode.MixedTextStmt:
-			call := giomCallExpr("write", 0)
-			if !call.LParen.IsValid() {
-				call.LParen = t.NodePos
-			}
-			if !call.RParen.IsValid() {
-				call.RParen = t.NodeEnd
-			}
-			call.Args.Values = append(call.Args.Values, gnode.Str(s.Value(), s.Pos()))
-			ctx.WriteStmts(gnode.SExpr(call))
-		case *gnode.MixedValueStmt:
-			call := giomCallExpr("write", 0)
-			if !call.LParen.IsValid() {
-				call.LParen = t.NodePos
-			}
-			if !call.RParen.IsValid() {
-				call.RParen = t.NodeEnd
-			}
-			call.Args.Values = append(call.Args.Values, s.Expr)
-			ctx.WriteStmts(gnode.SExpr(call))
-		case gnode.Stmt:
-			ctx.WriteStmts(s)
-		}
-	}
+	ctx.WriteStmts(convertText(t)...)
 }
 
 // =============================================================================
@@ -216,7 +191,7 @@ func (h *HtmlStmt) StmtNode()       {}
 func (h *HtmlStmt) String() string  { return "giom.Html" }
 
 func (h *HtmlStmt) WriteCode(ctx *gnode.CodeWriteContext) {
-	ctx.WriteStmts(h.Stmts...)
+	ctx.WriteStmts(convertHtml(h)...)
 }
 
 // =============================================================================
@@ -236,15 +211,7 @@ func (d *DoctypeStmt) StmtNode()       {}
 func (d *DoctypeStmt) String() string  { return fmt.Sprintf("giom.Doctype(%s)", d.Value) }
 
 func (d *DoctypeStmt) WriteCode(ctx *gnode.CodeWriteContext) {
-	call := giomCallExpr("write", 0)
-	if !call.LParen.IsValid() {
-		call.LParen = d.NodePos
-	}
-	if !call.RParen.IsValid() {
-		call.RParen = d.NodeEnd
-	}
-	call.Args.Values = append(call.Args.Values, gnode.Str(doctypeValue(d.Value), 0))
-	ctx.WriteStmts(gnode.SExpr(call))
+	ctx.WriteStmts(convertDoctype(d)...)
 }
 
 var doctypes = map[string]string{

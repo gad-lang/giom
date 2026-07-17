@@ -180,9 +180,16 @@ func (r *Render) Render(out io.Writer, filePath string, globals gad.Dict) error 
 		return err
 	}
 	e := gad.NewEval(entry.builtins.Build(), st, gad.CompileOptions{}, &gad.RunOpts{StdOut: out, Globals: gad.Dict(globals)})
-	_, err = e.Run(context.Background(), entry.bc)
+	ret, err := e.Run(context.Background(), entry.bc)
 	if err != nil {
 		return fmt.Errorf("render %s: %w", filePath, err)
+	}
+	// The compiled template builds a render tree and returns its root element;
+	// walk it to write the HTML output.
+	if el, ok := ret.(Element); ok {
+		if _, err = el.WriteTo(e.VM, out); err != nil {
+			return fmt.Errorf("render %s: %w", filePath, err)
+		}
 	}
 	return nil
 }

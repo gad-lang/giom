@@ -10,8 +10,8 @@ import (
 	"github.com/gad-lang/gad/parser/source"
 	"github.com/gad-lang/gad/token"
 
-	giomnode "github.com/gad-lang/giom/node"
-	giomtoken "github.com/gad-lang/giom/token"
+	giomnode "github.com/gad-lang/gad/giom/node"
+	giomtoken "github.com/gad-lang/gad/giom/token"
 )
 
 type bailout struct{}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	giom "github.com/gad-lang/giom"
+	giom "github.com/gad-lang/gad/giom"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

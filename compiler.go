@@ -10,8 +10,8 @@ import (
 	gnode "github.com/gad-lang/gad/parser/node"
 	"github.com/gad-lang/gad/parser/source"
 	"github.com/gad-lang/gad/token"
-	giomnode "github.com/gad-lang/giom/node"
-	giomparser "github.com/gad-lang/giom/parser"
+	giomnode "github.com/gad-lang/gad/giom/node"
+	giomparser "github.com/gad-lang/gad/giom/parser"
 )
 
 // Compiler compiles giom v2 source into GAD bytecode. Construct one with

@@ -1,4 +1,4 @@
-module github.com/gad-lang/giom
+module github.com/gad-lang/gad/giom
 
 go 1.26.5
 
@@ -6,6 +6,10 @@ require (
 	github.com/gad-lang/gad v0.0.4-0.20260717002044-7752b8fbcf85
 	github.com/stretchr/testify v1.11.1
 )
+
+// giom lives in the gad repository as the ./giom submodule; build against the
+// parent gad module in the working tree rather than a published version.
+replace github.com/gad-lang/gad => ../
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

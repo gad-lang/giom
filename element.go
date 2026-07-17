@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/gad-lang/gad"
-	giomnode "github.com/gad-lang/giom/node"
+	giomnode "github.com/gad-lang/gad/giom/node"
 )
 
 // ElementType classifies the kind of a rendered Element.

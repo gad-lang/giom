@@ -15,7 +15,7 @@ import (
 	"github.com/gad-lang/gad/parser/source"
 	"github.com/gad-lang/gad/token"
 
-	giomtoken "github.com/gad-lang/giom/token"
+	giomtoken "github.com/gad-lang/gad/giom/token"
 )
 
 // =============================================================================

@@ -7,8 +7,8 @@ import (
 	"github.com/gad-lang/gad"
 	gnode "github.com/gad-lang/gad/parser/node"
 	"github.com/gad-lang/gad/parser/source"
-	giomnode "github.com/gad-lang/giom/node"
-	giomparser "github.com/gad-lang/giom/parser"
+	giomnode "github.com/gad-lang/gad/giom/node"
+	giomparser "github.com/gad-lang/gad/giom/parser"
 )
 
 // TestEnumDeclarations covers the `@enum IDENT ( … )` directive: its field body
